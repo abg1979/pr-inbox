@@ -6,6 +6,7 @@
     <Project Path="src/PrInbox.Sources/PrInbox.Sources.csproj" />
     <Project Path="src/PrInbox.Web/PrInbox.Web.csproj" />
     <Project Path="src/PrInbox.Tray/PrInbox.Tray.csproj" />
+    <Project Path="src/PrInbox.Launcher/PrInbox.Launcher.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/PrInbox.Publishers.Tests/PrInbox.Publishers.Tests.csproj" />

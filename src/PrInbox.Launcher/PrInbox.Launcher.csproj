@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>pr-inbox-launcher</AssemblyName>
+    <RootNamespace>PrInbox.Launcher</RootNamespace>
+
+    <!-- Global tool packaging -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>pr-inbox-launcher</ToolCommandName>
+    <PackageId>JmPrieur.PrInbox.Launcher</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Description>Cross-platform console launcher for PR Inbox Web. Starts the local web server, waits for health, opens the browser, and shuts down gracefully on Ctrl+C.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <Content Include="..\PrInbox.Web\bin\$(Configuration)\net10.0\**\*"
+             Pack="true"
+             PackagePath="tools/$(TargetFramework)/any/webhost/%(RecursiveDir)%(Filename)%(Extension)"
+             Visible="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build the web project first so pr-inbox-web exists next door, but do
+         NOT pull its assembly into this project. The launcher starts the web
+         exe out-of-process. -->
+    <ProjectReference Include="..\PrInbox.Web\PrInbox.Web.csproj"
+                      ReferenceOutputAssembly="false"
+                      Private="false"
+                      ExcludeAssets="all" />
+  </ItemGroup>
+
+  <!-- Ensure Publish (including tool-pack publish) contains a webhost payload. -->
+  <Target Name="PublishWebHostAlongsideLauncher" AfterTargets="Publish">
+    <MSBuild
+      Projects="..\PrInbox.Web\PrInbox.Web.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);PublishDir=$(PublishDir)webhost/;SelfContained=false;UseAppHost=false" />
+  </Target>
+
+</Project>

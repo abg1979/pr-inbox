@@ -140,13 +140,16 @@ From source (until published to NuGet):
 git clone <repo-or-path>
 cd pr-inbox
 dotnet pack -c Release src/PrInbox.Cli/PrInbox.Cli.csproj
+dotnet pack -c Release src/PrInbox.Launcher/PrInbox.Launcher.csproj
 dotnet tool install --global --add-source src/PrInbox.Cli/nupkg JmPrieur.PrInbox
+dotnet tool install --global --add-source src/PrInbox.Launcher/nupkg JmPrieur.PrInbox.Launcher
 ```
 
 Verify:
 
 ```powershell
 pr-inbox --help
+pr-inbox-launcher
 pr-inbox config doctor   # checks gh + az auth, ADO project access
 ```
 
