@@ -174,10 +174,9 @@ public sealed class BotConfig
 }
 
 /// <summary>
-/// Defaults the Web UI uses when spawning <c>agency copilot</c> for a
-/// review. Each field is overridable; falls through to the matching
-/// <c>PRINBOX_REVIEW_*</c> environment variable if the config value is
-/// empty.
+/// Defaults the Web UI uses when launching a review session.
+/// The common fields apply on every OS unless overridden by
+/// <see cref="Platform"/> for the active platform.
 /// </summary>
 public sealed class ReviewLauncherSettings
 {
@@ -215,6 +214,12 @@ public sealed class ReviewLauncherSettings
             .Replace("{plugin}", Plugin)
             .Replace("{model}", Model)
             .Replace("{agent}", Agent);
+
+    /// <summary>
+    /// Platform-specific launcher overrides merged on top of the common
+    /// settings at runtime.
+    /// </summary>
+    public PlatformReviewLauncherSettings Platform { get; init; } = new();
 
     /// <summary>
     /// Plugin spec substituted into the <c>{plugin}</c> placeholder of
@@ -325,4 +330,104 @@ public sealed class ReviewLauncherSettings
     /// without a process restart.
     /// </remarks>
     public bool TabPerReview { get; set; } = false;
+
+    /// <summary>
+    /// Computes the effective launcher settings for the current platform:
+    /// common defaults first, then platform-specific overrides.
+    /// </summary>
+    public ResolvedReviewLaunchSettings ResolveForCurrentPlatform(string? pluginDir = null)
+        => ResolveForPlatform(PlatformKindDetector.Current, pluginDir);
+
+    /// <summary>
+    /// Computes the effective launcher settings for the specified platform:
+    /// common defaults first, then platform-specific overrides.
+    /// </summary>
+    public ResolvedReviewLaunchSettings ResolveForPlatform(PlatformKind platform, string? pluginDir = null)
+    {
+        var platformOverride = Platform.For(platform);
+        var launchTemplate = string.IsNullOrWhiteSpace(platformOverride.LaunchCommand)
+            ? LaunchCommand
+            : platformOverride.LaunchCommand.Trim();
+        var resolvedLaunch = launchTemplate
+            .Replace("{plugindir}", pluginDir ?? string.Empty)
+            .Replace("{plugin}", Plugin)
+            .Replace("{model}", Model)
+            .Replace("{agent}", Agent);
+
+        var keepOpen = platformOverride.KeepTerminalOpen ?? true;
+        return new ResolvedReviewLaunchSettings(
+            Platform: platform,
+            LaunchCommand: resolvedLaunch,
+            TerminalProgram: platformOverride.TerminalProgram?.Trim(),
+            TerminalArgsTemplate: platformOverride.TerminalArgsTemplate?.Trim(),
+            TerminalRawCommand: platformOverride.TerminalRawCommand?.Trim(),
+            KeepTerminalOpen: keepOpen);
+    }
 }
+
+public enum PlatformKind
+{
+    Windows,
+    MacOS,
+    Linux,
+}
+
+public static class PlatformKindDetector
+{
+    public static PlatformKind Current =>
+        OperatingSystem.IsWindows() ? PlatformKind.Windows :
+        OperatingSystem.IsMacOS() ? PlatformKind.MacOS :
+        PlatformKind.Linux;
+
+    public static bool TryParse(string? raw, out PlatformKind platform)
+    {
+        platform = default;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        return raw.Trim().ToLowerInvariant() switch
+        {
+            "windows" or "win" => (platform = PlatformKind.Windows) == PlatformKind.Windows,
+            "macos" or "mac" or "osx" => (platform = PlatformKind.MacOS) == PlatformKind.MacOS,
+            "linux" => (platform = PlatformKind.Linux) == PlatformKind.Linux,
+            _ => false,
+        };
+    }
+}
+
+public sealed class PlatformLauncherOverride
+{
+    /// <summary>Optional override for the review launch template.</summary>
+    public string? LaunchCommand { get; set; }
+    /// <summary>Terminal host executable to run (e.g. wt.exe, osascript, gnome-terminal).</summary>
+    public string? TerminalProgram { get; set; }
+    /// <summary>Arguments template for <see cref="TerminalProgram"/>.</summary>
+    public string? TerminalArgsTemplate { get; set; }
+    /// <summary>
+    /// Optional raw command escape hatch. When set, launcher executes this
+    /// command verbatim through the platform shell.
+    /// </summary>
+    public string? TerminalRawCommand { get; set; }
+    /// <summary>Whether the terminal should stay open after command completion.</summary>
+    public bool? KeepTerminalOpen { get; set; }
+}
+
+public sealed class PlatformReviewLauncherSettings
+{
+    public PlatformLauncherOverride Windows { get; init; } = new();
+    public PlatformLauncherOverride MacOS { get; init; } = new();
+    public PlatformLauncherOverride Linux { get; init; } = new();
+
+    public PlatformLauncherOverride For(PlatformKind platform) => platform switch
+    {
+        PlatformKind.Windows => Windows,
+        PlatformKind.MacOS => MacOS,
+        _ => Linux,
+    };
+}
+
+public sealed record ResolvedReviewLaunchSettings(
+    PlatformKind Platform,
+    string LaunchCommand,
+    string? TerminalProgram,
+    string? TerminalArgsTemplate,
+    string? TerminalRawCommand,
+    bool KeepTerminalOpen);

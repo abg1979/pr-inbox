@@ -100,6 +100,15 @@ public interface IConfigService
     Task SetReviewLauncherCommandAsync(string launchCommand, CancellationToken ct = default);
 
     /// <summary>
+    /// Sets platform-specific launcher overrides merged on top of common
+    /// review-launch defaults at runtime.
+    /// </summary>
+    Task SetPlatformLauncherOverrideAsync(
+        PlatformKind platform,
+        PlatformLauncherOverrideUpdate update,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Sets the Review-launcher tab colour
     /// (<see cref="ReviewLauncherSettings.TabColor"/>) and mirrors it onto
     /// the DI singleton so the next review launch picks it up without a
@@ -157,6 +166,13 @@ public interface IConfigService
         string identity,
         CancellationToken ct = default);
 }
+
+public sealed record PlatformLauncherOverrideUpdate(
+    string? LaunchCommand = null,
+    string? TerminalProgram = null,
+    string? TerminalArgsTemplate = null,
+    string? TerminalRawCommand = null,
+    bool? KeepTerminalOpen = null);
 
 /// <summary>
 /// Outcome of <see cref="IConfigService.BindGitHubSourceToIdentityAsync"/>.

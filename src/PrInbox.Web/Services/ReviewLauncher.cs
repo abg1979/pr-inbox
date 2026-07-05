@@ -94,7 +94,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         StartWatcher(brief.PrUrl, brief.RunDirectory, brief.RunId, brief.HeadSha);
         SpawnConsole(brief.RunDirectory, tabTitle, brief.RunId);
 
-        return $"Review run #{brief.RunId} opened in a new window. Findings will land in {brief.RunDirectory}\\findings.yaml.";
+        return $"Review run #{brief.RunId} opened in a new window. Findings will land in {Path.Combine(brief.RunDirectory, "findings.yaml")}.";
     }
 
     /// <summary>
@@ -292,90 +292,37 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
 
     private void SpawnConsole(string runDir, string tabTitle, long runId)
     {
-        var ps1 = FindLauncherScript();
-        if (ps1 is null)
-        {
-            _log.LogWarning("launch-review.ps1 not found; cannot spawn console.");
-            return;
-        }
-
         var rl = _config.ReviewLauncher;
-        // The launch command (with {plugindir}/{plugin}/{model}/{agent}
-        // substituted) owns the CLI and its flag syntax, so the launcher
-        // hardcodes no flag names. Strip embedded quotes so the value survives
-        // the wt/pwsh command line.
         var pluginDir = FindPluginDir();
-        var launchCommand = rl.ResolveLaunchCommand(pluginDir).Replace("\"", "");
-        // Quote values defensively in case a user puts spaces in them. The
-        // tab title is also re-used as the underlying agent's session name
-        // (--name) so each review claims its own copilot session and the
-        // CLI doesn't auto-load a colliding prior one.
-        //
-        // SECURITY: tabTitle derives from upstream PR metadata (author login,
-        // repo name). Apply a strict allowlist before it reaches the wt.exe /
-        // cmd.exe command line — wt re-splits every argv element on `;` even
-        // inside what was a quoted --title, and cmd treats `& | ^ %` as
-        // metacharacters. Simply stripping `"` is NOT sufficient.
-        var safeSessionName = SanitizeForShellTitle(tabTitle);
-        var launcherArgs =
-            $"-RunDirectory \"{runDir}\"" +
-            $" -LaunchCommand \"{launchCommand}\"" +
-            $" -SessionName \"{safeSessionName}\"" +
-            (rl.AutoSend ? "" : " -NoAutoSend") +
-            (rl.Yolo     ? " -Yolo"       : "");
+        var resolved = rl.ResolveForCurrentPlatform(pluginDir);
+        var launchCommand = BuildReviewCommand(resolved.LaunchCommand, rl.AutoSend, rl.Yolo);
 
-        // Allowlist the tab title so wt/cmd never see a metacharacter from
-        // upstream PR data. Falls back to the generic title on empty.
-        // Append a stable, machine-readable token containing the run id so
-        // ConsoleWindowRegistry can find and validate this window even when
-        // a human renames the tab — defeats HWND recycling.
         var humanTitle = SanitizeForShellTitle(tabTitle);
         var token = ConsoleWindowRegistry.TokenFor(runId);
         var safeTitle = $"{humanTitle} [{token}]";
-
-        // Optional per-tab colour so review windows stand out from plain
-        // terminals. Validated to a wt-acceptable hex (#rgb / #rrggbb);
-        // anything else (incl. empty) is dropped so wt never mis-parses.
         var tabColorArg = ReviewLauncherSettings.NormalizeTabColor(rl.TabColor) is { } color
             ? $" --tabColor \"{color}\""
             : "";
 
-        var wt = ResolveOnPath("wt.exe");
-        var tabPerReview = rl.TabPerReview;
         try
         {
-            if (wt is not null)
+            var started = resolved.Platform switch
             {
-                var args = BuildWtArguments(tabPerReview, safeTitle, tabColorArg, runDir, ps1, launcherArgs);
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = wt,
-                    Arguments = args,
-                    UseShellExecute = true,
-                });
-                // The console registry tracks one OS window per review so the
-                // Inbox can minimize / restore / focus each independently. In
-                // tab mode every review shares a single window (HWND), so that
-                // per-review targeting is impossible — skip registration and
-                // let the Inbox panel degrade to an explanatory note instead
-                // of controls that would act on every review at once.
-                if (!tabPerReview)
-                {
-                    _consoles.RegisterInBackground(runId, humanTitle);
-                }
+                PlatformKind.Windows => StartWindowsConsole(runDir, safeTitle, tabColorArg, launchCommand, rl.TabPerReview),
+                PlatformKind.MacOS => StartMacOsConsole(runDir, safeTitle, launchCommand, resolved),
+                _ => StartLinuxConsole(runDir, safeTitle, launchCommand, resolved),
+            };
+
+            if (!started)
+            {
+                _log.LogError("Failed to spawn review console for {RunDir}; launcher configuration is invalid.", runDir);
                 return;
             }
 
-            // Fallback: open a fresh pwsh window via cmd /c start. The
-            // start title is used as the new window's title bar text.
-            var fallbackArgs = $"/c start \"{safeTitle}\" pwsh -NoExit -File \"{ps1}\" {launcherArgs}";
-            Process.Start(new ProcessStartInfo
+            if (OperatingSystem.IsWindows() && !rl.TabPerReview)
             {
-                FileName = "cmd.exe",
-                Arguments = fallbackArgs,
-                UseShellExecute = true,
-            });
-            _consoles.RegisterInBackground(runId, humanTitle);
+                _consoles.RegisterInBackground(runId, humanTitle);
+            }
         }
         catch (Exception ex)
         {
@@ -401,27 +348,10 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
     /// token the registry polls for during discovery.
     /// </summary>
     internal static string BuildWtArguments(bool tabPerReview, string safeTitle, string tabColorArg,
-        string runDir, string ps1, string launcherArgs)
+        string runDir, string command)
     {
         var window = tabPerReview ? ReviewLauncherSettings.ReviewWindowName : "new";
-        return $"-w {window} nt --title \"{safeTitle}\" --suppressApplicationTitle{tabColorArg} -d \"{runDir}\" pwsh -NoExit -File \"{ps1}\" {launcherArgs}";
-    }
-
-    private static string? FindLauncherScript()
-    {
-        // 1. Environment override.
-        var envPath = Environment.GetEnvironmentVariable("PRINBOX_LAUNCH_SCRIPT");
-        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath)) return envPath;
-
-        // 2. Walk up from the current binary towards a 'tools/launch-review.ps1'.
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 8 && dir is not null; i++)
-        {
-            var candidate = Path.Combine(dir, "tools", "launch-review.ps1");
-            if (File.Exists(candidate)) return candidate;
-            dir = Path.GetDirectoryName(dir);
-        }
-        return null;
+        return $"-w {window} nt --title \"{safeTitle}\" --suppressApplicationTitle{tabColorArg} -d \"{runDir}\" pwsh -NoExit -Command \"{EscapeForPowerShellCommand(command)}\"";
     }
 
     /// <summary>
@@ -462,6 +392,165 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         }
         return null;
     }
+
+    private static bool StartWindowsConsole(string runDir, string safeTitle, string tabColorArg, string command, bool tabPerReview)
+    {
+        var wt = ResolveOnPath("wt.exe");
+        if (wt is not null)
+        {
+            var args = BuildWtArguments(tabPerReview, safeTitle, tabColorArg, runDir, command);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = wt,
+                Arguments = args,
+                UseShellExecute = true,
+            });
+            return true;
+        }
+
+        var fallbackArgs = $"/c start \"{safeTitle}\" pwsh -NoExit -Command \"{EscapeForPowerShellCommand(command)}\"";
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = fallbackArgs,
+            UseShellExecute = true,
+        });
+        return true;
+    }
+
+    private static bool StartMacOsConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved)
+    {
+        if (!string.IsNullOrWhiteSpace(resolved.TerminalRawCommand))
+        {
+            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command);
+        }
+
+        if (!string.IsNullOrWhiteSpace(resolved.TerminalProgram) && !string.IsNullOrWhiteSpace(resolved.TerminalArgsTemplate))
+        {
+            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command);
+        }
+
+        // Default macOS host: Terminal.app via AppleScript.
+        var script = $"tell application \"Terminal\" to do script \"cd {EscapeForAppleScriptSingleQuotedPath(runDir)}; {EscapeForAppleScript(command)}\"";
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "osascript",
+            Arguments = $"-e \"{script}\"",
+            UseShellExecute = false,
+        });
+        return true;
+    }
+
+    private static bool StartLinuxConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved)
+    {
+        if (!string.IsNullOrWhiteSpace(resolved.TerminalRawCommand))
+        {
+            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command);
+        }
+
+        if (!string.IsNullOrWhiteSpace(resolved.TerminalProgram) && !string.IsNullOrWhiteSpace(resolved.TerminalArgsTemplate))
+        {
+            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command);
+        }
+
+        foreach (var terminal in new[] { "x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm" })
+        {
+            var resolvedPath = ResolveOnPath(terminal);
+            if (resolvedPath is null) continue;
+
+            var bashCommand = EscapeForDoubleQuotedBash($"{command}; exec bash");
+            var args = terminal switch
+            {
+                "x-terminal-emulator" => $"-T \"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
+                "gnome-terminal" => $"--title=\"{safeTitle}\" -- bash -lc \"{bashCommand}\"",
+                "konsole" => $"--workdir \"{runDir}\" -p tabtitle=\"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
+                "xfce4-terminal" => $"--title \"{safeTitle}\" --working-directory \"{runDir}\" --command \"bash -lc \\\"{bashCommand}\\\"\"",
+                _ => $"-T \"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
+            };
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = resolvedPath,
+                Arguments = args,
+                WorkingDirectory = runDir,
+                UseShellExecute = false,
+            });
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool StartWithStructuredTemplate(string program, string argsTemplate, string runDir, string title, string command)
+    {
+        var args = argsTemplate
+            .Replace("{runDir}", runDir)
+            .Replace("{title}", title)
+            .Replace("{command}", command);
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = program,
+            Arguments = args,
+            WorkingDirectory = runDir,
+            UseShellExecute = false,
+        });
+        return true;
+    }
+
+    private static bool StartWithRawShellCommand(string rawCommand, string runDir, string title, string command)
+    {
+        var expanded = rawCommand
+            .Replace("{runDir}", runDir)
+            .Replace("{title}", title)
+            .Replace("{command}", command);
+
+        if (OperatingSystem.IsWindows())
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c {expanded}",
+                WorkingDirectory = runDir,
+                UseShellExecute = true,
+            });
+            return true;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "/bin/sh",
+            Arguments = $"-lc \"{expanded.Replace("\"", "\\\"")}\"",
+            WorkingDirectory = runDir,
+            UseShellExecute = false,
+        });
+        return true;
+    }
+
+    private static string BuildReviewCommand(string resolvedLaunchCommand, bool autoSend, bool yolo)
+    {
+        var command = resolvedLaunchCommand.Trim();
+        if (autoSend)
+        {
+            command += " -i \"Read brief.md and proceed.\"";
+        }
+        if (yolo)
+        {
+            command += " --yolo";
+        }
+        return command;
+    }
+
+    private static string EscapeForPowerShellCommand(string command)
+        => command.Replace("\"", "`\"");
+
+    private static string EscapeForAppleScript(string value)
+        => value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ");
+
+    private static string EscapeForAppleScriptSingleQuotedPath(string path)
+        => $"'{path.Replace("'", "'\\''")}'";
+
+    private static string EscapeForDoubleQuotedBash(string value)
+        => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     private static (PullRequestRepository pr, PrSnapshotRepository snap,
                     ObservedThreadRepository threads, ReviewRunRepository runs) OpenRepos()

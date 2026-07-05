@@ -60,4 +60,26 @@ public class ConfigProfileTests
         profile!.IdentityClasses.Should().ContainSingle(c => c.Name == "EMU" && c.AliasSuffix == "_microsoft");
         profile.ReviewLauncher!.LaunchCommand.Should().Be("agency copilot");
     }
+
+    [Fact]
+    public void Supports_WhenPlatformsMissing_AllowsAnyPlatform()
+    {
+        var profile = new ConfigProfile();
+        profile.Supports(PlatformKind.Windows).Should().BeTrue();
+        profile.Supports(PlatformKind.MacOS).Should().BeTrue();
+        profile.Supports(PlatformKind.Linux).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Supports_WhenPlatformsDeclared_RequiresMembership()
+    {
+        var profile = new ConfigProfile
+        {
+            SupportedPlatforms = new() { "macos", "linux" },
+        };
+
+        profile.Supports(PlatformKind.Windows).Should().BeFalse();
+        profile.Supports(PlatformKind.MacOS).Should().BeTrue();
+        profile.Supports(PlatformKind.Linux).Should().BeTrue();
+    }
 }

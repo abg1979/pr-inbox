@@ -378,6 +378,63 @@ else
         </div>
         <div class="settings-toggle">
             <label>
+                <strong>Platform launcher override (@CurrentPlatformLabel)</strong>
+                <span class="muted">
+                    Optional per-platform override merged on top of the common launch command.
+                    Leave fields blank to inherit common defaults.
+                </span>
+                @if (_showPlatformAdvanced)
+                {
+                    <span style="display:inline-flex; align-items:center; gap:.5rem; margin-top:.35rem;">
+                        <span class="muted">Platform</span>
+                        <select @bind="_editingPlatform" @bind:after="OnEditingPlatformChangedAsync" disabled="@_busy">
+                            <option value="@PlatformKind.Windows">Windows</option>
+                            <option value="@PlatformKind.MacOS">macOS</option>
+                            <option value="@PlatformKind.Linux">Linux</option>
+                        </select>
+                    </span>
+                }
+                <input type="text"
+                       value="@_platformLaunchCommand"
+                       @onchange="OnPlatformLaunchCommandChanged"
+                       placeholder="(optional) platform launch command override"
+                       disabled="@_busy"
+                       style="grid-column: 1 / -1; width: 100%; margin-top: .35rem;" />
+                <input type="text"
+                       value="@_platformTerminalProgram"
+                       @onchange="OnPlatformTerminalProgramChanged"
+                       placeholder="(optional) terminal program (e.g. osascript, gnome-terminal, wt.exe)"
+                       disabled="@_busy"
+                       style="grid-column: 1 / -1; width: 100%; margin-top: .35rem;" />
+                <input type="text"
+                       value="@_platformTerminalArgs"
+                       @onchange="OnPlatformTerminalArgsChanged"
+                       placeholder="(optional) terminal args template with {runDir}, {title}, {command}"
+                       disabled="@_busy"
+                       style="grid-column: 1 / -1; width: 100%; margin-top: .35rem;" />
+                <input type="text"
+                       value="@_platformTerminalRaw"
+                       @onchange="OnPlatformTerminalRawChanged"
+                       placeholder="(optional) raw shell command escape hatch"
+                       disabled="@_busy"
+                       style="grid-column: 1 / -1; width: 100%; margin-top: .35rem;" />
+                <span style="display:inline-flex; align-items:center; gap:.5rem; margin-top:.35rem;">
+                    <input type="checkbox"
+                           checked="@_platformKeepOpen"
+                           @onchange="@(e => OnPlatformKeepOpenChanged((bool)e.Value!))"
+                           disabled="@_busy" />
+                    <span class="muted">Keep terminal open (platform override)</span>
+                </span>
+                <span style="display:inline-flex; align-items:center; gap:.5rem; margin-top:.35rem;">
+                    <button @onclick="SavePlatformLauncherOverrideAsync" disabled="@_busy">Save platform override</button>
+                    <button class="link-button" @onclick="TogglePlatformAdvanced" disabled="@_busy">
+                        @(_showPlatformAdvanced ? "Hide advanced platforms" : "Edit other platforms…")
+                    </button>
+                </span>
+            </label>
+        </div>
+        <div class="settings-toggle">
+            <label>
                 <input type="checkbox"
                        checked="@_autoSend"
                        @onchange="@(e => OnAutoSendChanged((bool)e.Value!))"
@@ -461,6 +518,14 @@ else
     private bool _tabPerReview;
     private string _tabColor = string.Empty;
     private string _launchCommand = string.Empty;
+    private static readonly PlatformKind CurrentPlatform = PlatformKindDetector.Current;
+    private PlatformKind _editingPlatform = CurrentPlatform;
+    private bool _showPlatformAdvanced;
+    private string _platformLaunchCommand = string.Empty;
+    private string _platformTerminalProgram = string.Empty;
+    private string _platformTerminalArgs = string.Empty;
+    private string _platformTerminalRaw = string.Empty;
+    private bool _platformKeepOpen = true;
 
     private bool _showGheForm;
     private string _gheHost = string.Empty;
@@ -572,6 +637,42 @@ else
         _tabPerReview = _cfg.ReviewLauncher.TabPerReview;
         _tabColor = _cfg.ReviewLauncher.TabColor;
         _launchCommand = _cfg.ReviewLauncher.LaunchCommand;
+        LoadPlatformEditor(_editingPlatform);
+    }
+
+    private string CurrentPlatformLabel =>
+        _editingPlatform switch
+        {
+            PlatformKind.Windows => "windows",
+            PlatformKind.MacOS => "macos",
+            _ => "linux",
+        };
+
+    private void LoadPlatformEditor(PlatformKind platform)
+    {
+        if (_cfg is null) return;
+        var ov = _cfg.ReviewLauncher.Platform.For(platform);
+        _platformLaunchCommand = ov.LaunchCommand ?? string.Empty;
+        _platformTerminalProgram = ov.TerminalProgram ?? string.Empty;
+        _platformTerminalArgs = ov.TerminalArgsTemplate ?? string.Empty;
+        _platformTerminalRaw = ov.TerminalRawCommand ?? string.Empty;
+        _platformKeepOpen = ov.KeepTerminalOpen ?? true;
+    }
+
+    private Task OnEditingPlatformChangedAsync()
+    {
+        LoadPlatformEditor(_editingPlatform);
+        return Task.CompletedTask;
+    }
+
+    private void TogglePlatformAdvanced()
+    {
+        _showPlatformAdvanced = !_showPlatformAdvanced;
+        if (!_showPlatformAdvanced)
+        {
+            _editingPlatform = CurrentPlatform;
+            LoadPlatformEditor(_editingPlatform);
+        }
     }
 
     private static string FormatPathFilters(IReadOnlyDictionary<string, List<string>> filters)
@@ -906,6 +1007,50 @@ else
         }
         return map;
     }
+
+    private Task OnPlatformLaunchCommandChanged(ChangeEventArgs e)
+    {
+        _platformLaunchCommand = e.Value?.ToString() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
+    private Task OnPlatformTerminalProgramChanged(ChangeEventArgs e)
+    {
+        _platformTerminalProgram = e.Value?.ToString() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
+    private Task OnPlatformTerminalArgsChanged(ChangeEventArgs e)
+    {
+        _platformTerminalArgs = e.Value?.ToString() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
+    private Task OnPlatformTerminalRawChanged(ChangeEventArgs e)
+    {
+        _platformTerminalRaw = e.Value?.ToString() ?? string.Empty;
+        return Task.CompletedTask;
+    }
+
+    private Task OnPlatformKeepOpenChanged(bool value)
+    {
+        _platformKeepOpen = value;
+        return Task.CompletedTask;
+    }
+
+    private Task SavePlatformLauncherOverrideAsync() =>
+        WrapAsync(async () =>
+        {
+            await ConfigSvc.SetPlatformLauncherOverrideAsync(
+                _editingPlatform,
+                new PlatformLauncherOverrideUpdate(
+                    LaunchCommand: _platformLaunchCommand,
+                    TerminalProgram: _platformTerminalProgram,
+                    TerminalArgsTemplate: _platformTerminalArgs,
+                    TerminalRawCommand: _platformTerminalRaw,
+                    KeepTerminalOpen: _platformKeepOpen));
+            SetMessage($"Saved platform launcher override for {CurrentPlatformLabel}.");
+        });
 
     private Task OnAutoSendChanged(bool value)
     {

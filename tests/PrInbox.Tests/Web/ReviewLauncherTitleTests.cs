@@ -73,7 +73,7 @@ public class ReviewLauncherTitleTests
     {
         var args = ReviewLauncher.BuildWtArguments(
             tabPerReview: false, "octocat playground #1 [pr-inbox:run-7]", " --tabColor \"#5da4ff\"",
-            @"C:\runs\7", @"C:\tools\launch-review.ps1", "-RunDirectory \"C:\\runs\\7\"");
+            @"C:\runs\7", "copilot --plugin-dir C:\\plugins\\dual-review");
 
         args.Should().StartWith("-w new nt ");
         args.Should().NotContain(ReviewLauncherSettings.ReviewWindowName);
@@ -84,7 +84,7 @@ public class ReviewLauncherTitleTests
     {
         var args = ReviewLauncher.BuildWtArguments(
             tabPerReview: true, "octocat playground #1 [pr-inbox:run-7]", " --tabColor \"#5da4ff\"",
-            @"C:\runs\7", @"C:\tools\launch-review.ps1", "-RunDirectory \"C:\\runs\\7\"");
+            @"C:\runs\7", "copilot --plugin-dir C:\\plugins\\dual-review");
 
         args.Should().StartWith($"-w {ReviewLauncherSettings.ReviewWindowName} nt ");
         args.Should().NotContain("-w new ");

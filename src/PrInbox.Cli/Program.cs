@@ -42,10 +42,11 @@ internal static class Program
                     .WithDescription("Register an (org, project) pair for ADO enumeration.");
                 cfg.AddCommand<ConfigImportCommand>("import")
                     .WithDescription("Import a profile (identity classes + launch command), e.g. profiles/microsoft.json.");
+                cfg.AddCommand<SetPlatformLauncherCommand>("set-platform-launcher")
+                    .WithDescription("Set platform-specific review-launch terminal/command overrides.");
             });
         });
 
         return await app.RunAsync(args);
     }
 }
-

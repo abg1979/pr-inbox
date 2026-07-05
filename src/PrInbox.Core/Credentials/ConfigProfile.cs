@@ -18,6 +18,13 @@ namespace PrInbox.Core.Credentials;
 /// </summary>
 public sealed class ConfigProfile
 {
+    /// <summary>
+    /// Optional platform allow-list for this profile. When omitted, profile is
+    /// considered compatible with all platforms for backward compatibility.
+    /// Supported values: windows, macos, linux.
+    /// </summary>
+    public List<string>? SupportedPlatforms { get; init; }
+
     /// <summary>Replaces <see cref="PrInboxConfig.IdentityClasses"/> when set.</summary>
     public List<IdentityClass>? IdentityClasses { get; init; }
 
@@ -52,6 +59,18 @@ public sealed class ConfigProfile
             changes.Add("review model");
         }
         return changes;
+    }
+
+    public bool Supports(PlatformKind platform)
+    {
+        if (SupportedPlatforms is not { Count: > 0 })
+        {
+            return true;
+        }
+
+        var wanted = platform.ToString().ToLowerInvariant();
+        return SupportedPlatforms.Any(p =>
+            string.Equals(p?.Trim(), wanted, StringComparison.OrdinalIgnoreCase));
     }
 }
 

@@ -226,8 +226,17 @@
 @{
     var consoles = Consoles.List();
     var tabPerReview = Config.ReviewLauncher.TabPerReview;
+    var isWindows = OperatingSystem.IsWindows();
 }
-@if (tabPerReview)
+@if (!isWindows)
+{
+    <div class="toolbar console-strip" role="group" aria-label="Review consoles">
+        <span class="muted">
+            Review console window controls are only available on Windows.
+        </span>
+    </div>
+}
+else if (tabPerReview)
 {
     <div class="toolbar console-strip" role="group" aria-label="Review consoles">
         <span class="muted">

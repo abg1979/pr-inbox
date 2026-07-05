@@ -260,6 +260,20 @@ when launching from the web UI):
 | `PRINBOX_REVIEW_MODEL` | `claude-opus-4.8` | Value for the `{model}` placeholder |
 | `PRINBOX_PLUGIN_DIR` | _(auto-resolved)_ | Overrides the `{plugindir}` path (bundled `plugins/dual-review`) |
 
+### Platform-specific launcher overrides
+
+`config.json` now supports per-platform review-launch overrides under
+`reviewLauncher.platform` (`windows`, `macos`, `linux`). These are partial
+overrides merged on top of the common launcher fields.
+
+You can set them via CLI:
+
+```powershell
+pr-inbox config set-platform-launcher windows --terminal-program "wt.exe"
+pr-inbox config set-platform-launcher macos --terminal-program "osascript"
+pr-inbox config set-platform-launcher linux --terminal-program "gnome-terminal"
+```
+
 ---
 
 ## First-run troubleshooting

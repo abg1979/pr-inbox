@@ -358,6 +358,50 @@ public sealed class ConfigServiceTests : IDisposable
             "claude-opus-4.8 dual-review:dual-model-review");
     }
 
+    [Fact]
+    public void ResolveForPlatform_Merges_Common_Then_Platform_Overrides()
+    {
+        var rl = new ReviewLauncherSettings
+        {
+            LaunchCommand = "copilot --plugin-dir {plugindir} --model {model} --agent {agent}",
+            Plugin = "market:dual-review@jmprieur/pr-inbox",
+            Model = "claude-opus-4.8",
+            Agent = "dual-review:dual-model-review",
+        };
+        rl.Platform.MacOS.LaunchCommand = "agency copilot --plugin {plugin} --model {model} --agent {agent}";
+        rl.Platform.MacOS.TerminalProgram = "osascript";
+        rl.Platform.MacOS.KeepTerminalOpen = false;
+
+        var resolved = rl.ResolveForPlatform(PlatformKind.MacOS, "/tmp/plugin");
+        resolved.Platform.Should().Be(PlatformKind.MacOS);
+        resolved.LaunchCommand.Should().Contain("agency copilot --plugin market:dual-review@jmprieur/pr-inbox");
+        resolved.TerminalProgram.Should().Be("osascript");
+        resolved.KeepTerminalOpen.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SetPlatformLauncherOverrideAsync_Persists_And_Mirrors_Singleton()
+    {
+        var singleton = new PrInboxConfig();
+        var svc = new ConfigService(singleton, _path);
+
+        await svc.SetPlatformLauncherOverrideAsync(
+            PlatformKind.Linux,
+            new PlatformLauncherOverrideUpdate(
+                TerminalProgram: "gnome-terminal",
+                TerminalArgsTemplate: "-- bash -lc \"{command}\"",
+                KeepTerminalOpen: true));
+
+        singleton.ReviewLauncher.Platform.Linux.TerminalProgram.Should().Be("gnome-terminal");
+        singleton.ReviewLauncher.Platform.Linux.TerminalArgsTemplate.Should().Be("-- bash -lc \"{command}\"");
+        singleton.ReviewLauncher.Platform.Linux.KeepTerminalOpen.Should().BeTrue();
+
+        var cfg = await svc.GetAsync();
+        cfg.ReviewLauncher.Platform.Linux.TerminalProgram.Should().Be("gnome-terminal");
+        cfg.ReviewLauncher.Platform.Linux.TerminalArgsTemplate.Should().Be("-- bash -lc \"{command}\"");
+        cfg.ReviewLauncher.Platform.Linux.KeepTerminalOpen.Should().BeTrue();
+    }
+
     [Theory]
     [InlineData("  #ABC  ", "#ABC")]
     [InlineData("#FFFFFF", "#FFFFFF")]

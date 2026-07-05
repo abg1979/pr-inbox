@@ -54,6 +54,18 @@ internal sealed class ConfigImportCommand : AsyncCommand<ConfigImportSettings>
             return 1;
         }
 
+        var currentPlatform = PlatformKindDetector.Current;
+        if (!profile.Supports(currentPlatform))
+        {
+            var declared = profile.SupportedPlatforms is { Count: > 0 }
+                ? string.Join(", ", profile.SupportedPlatforms)
+                : "<none>";
+            AnsiConsole.MarkupLine(
+                $"[red]Import rejected.[/] Profile does not support this platform ([bold]{currentPlatform}[/]). " +
+                $"Supported platforms: [grey]{Markup.Escape(declared)}[/].");
+            return 1;
+        }
+
         var config = await PrInboxConfig.LoadAsync(settings.ConfigPath);
 
         // SECURITY: LaunchCommand is the executable that runs on the next

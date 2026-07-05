@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using PrInbox.Core.Config;
 using PrInbox.Core.Credentials;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -201,6 +202,67 @@ internal sealed class AddAdoProjectCommand : AsyncCommand<AddAdoProjectSettings>
         config.Ado.Projects.Add(new AdoProjectConfig { Org = settings.Org, Project = settings.Project });
         await config.SaveAsync(settings.ConfigPath);
         AnsiConsole.MarkupLine($"[green]Added ADO project[/] [cyan]{Markup.Escape(settings.Org)}/{Markup.Escape(settings.Project)}[/]");
+        return 0;
+    }
+}
+
+internal sealed class SetPlatformLauncherSettings : CommandSettings
+{
+    [CommandArgument(0, "<PLATFORM>")]
+    [Description("Platform: windows | macos | linux")]
+    public required string Platform { get; init; }
+
+    [CommandOption("--launch-command <CMD>")]
+    [Description("Override review launch command template for this platform.")]
+    public string? LaunchCommand { get; init; }
+
+    [CommandOption("--terminal-program <PROGRAM>")]
+    [Description("Terminal host executable (e.g. wt.exe, osascript, gnome-terminal). Empty string clears.")]
+    public string? TerminalProgram { get; init; }
+
+    [CommandOption("--terminal-args <ARGS>")]
+    [Description("Arguments template for terminal program. Empty string clears.")]
+    public string? TerminalArgs { get; init; }
+
+    [CommandOption("--terminal-raw <CMD>")]
+    [Description("Raw shell command override. Empty string clears.")]
+    public string? TerminalRaw { get; init; }
+
+    [CommandOption("--keep-open <BOOL>")]
+    [Description("Whether terminal should remain open after completion (true/false).")]
+    public bool? KeepOpen { get; init; }
+
+    [CommandOption("--config <PATH>")]
+    public string? ConfigPath { get; init; }
+}
+
+internal sealed class SetPlatformLauncherCommand : AsyncCommand<SetPlatformLauncherSettings>
+{
+    protected override async Task<int> ExecuteAsync(CommandContext context, SetPlatformLauncherSettings settings, CancellationToken cancellationToken)
+    {
+        if (!PlatformKindDetector.TryParse(settings.Platform, out var platform))
+        {
+            AnsiConsole.MarkupLine($"[red]Invalid platform:[/] {Markup.Escape(settings.Platform)}");
+            AnsiConsole.MarkupLine("[grey]Expected: windows | macos | linux[/]");
+            return 1;
+        }
+
+        var update = new PlatformLauncherOverrideUpdate(
+            LaunchCommand: settings.LaunchCommand,
+            TerminalProgram: settings.TerminalProgram,
+            TerminalArgsTemplate: settings.TerminalArgs,
+            TerminalRawCommand: settings.TerminalRaw,
+            KeepTerminalOpen: settings.KeepOpen);
+
+        if (update is { LaunchCommand: null, TerminalProgram: null, TerminalArgsTemplate: null, TerminalRawCommand: null, KeepTerminalOpen: null })
+        {
+            AnsiConsole.MarkupLine("[yellow]No platform launcher fields specified.[/]");
+            return 1;
+        }
+
+        var svc = new PrInbox.Core.Config.ConfigService(configPath: settings.ConfigPath);
+        await svc.SetPlatformLauncherOverrideAsync(platform, update, cancellationToken);
+        AnsiConsole.MarkupLine($"[green]Updated platform launcher[/] for [cyan]{platform}[/].");
         return 0;
     }
 }

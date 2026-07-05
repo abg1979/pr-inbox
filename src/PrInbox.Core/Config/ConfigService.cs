@@ -212,6 +212,47 @@ public sealed class ConfigService : IConfigService
     }
 
     /// <inheritdoc />
+    public async Task SetPlatformLauncherOverrideAsync(
+        PlatformKind platform,
+        PlatformLauncherOverrideUpdate update,
+        CancellationToken ct = default)
+    {
+        var cfg = await PrInboxConfig.LoadAsync(_configPath, ct);
+        var target = cfg.ReviewLauncher.Platform.For(platform);
+
+        if (update.LaunchCommand is not null)
+        {
+            target.LaunchCommand = string.IsNullOrWhiteSpace(update.LaunchCommand)
+                ? null
+                : update.LaunchCommand.Trim();
+        }
+        if (update.TerminalProgram is not null)
+        {
+            target.TerminalProgram = string.IsNullOrWhiteSpace(update.TerminalProgram)
+                ? null
+                : update.TerminalProgram.Trim();
+        }
+        if (update.TerminalArgsTemplate is not null)
+        {
+            target.TerminalArgsTemplate = string.IsNullOrWhiteSpace(update.TerminalArgsTemplate)
+                ? null
+                : update.TerminalArgsTemplate.Trim();
+        }
+        if (update.TerminalRawCommand is not null)
+        {
+            target.TerminalRawCommand = string.IsNullOrWhiteSpace(update.TerminalRawCommand)
+                ? null
+                : update.TerminalRawCommand.Trim();
+        }
+        if (update.KeepTerminalOpen.HasValue)
+        {
+            target.KeepTerminalOpen = update.KeepTerminalOpen.Value;
+        }
+
+        await SaveAndRefreshAsync(cfg, ct);
+    }
+
+    /// <inheritdoc />
     public async Task SetRepoPathFiltersAsync(
         IReadOnlyDictionary<string, IReadOnlyList<string>> filters,
         CancellationToken ct = default)
@@ -406,6 +447,18 @@ public sealed class ConfigService : IConfigService
         _singleton.ReviewLauncher.TabColor = cfg.ReviewLauncher.TabColor;
         _singleton.ReviewLauncher.TabPerReview = cfg.ReviewLauncher.TabPerReview;
         _singleton.ReviewLauncher.LaunchCommand = cfg.ReviewLauncher.LaunchCommand;
+        MirrorPlatformOverride(_singleton.ReviewLauncher.Platform.Windows, cfg.ReviewLauncher.Platform.Windows);
+        MirrorPlatformOverride(_singleton.ReviewLauncher.Platform.MacOS, cfg.ReviewLauncher.Platform.MacOS);
+        MirrorPlatformOverride(_singleton.ReviewLauncher.Platform.Linux, cfg.ReviewLauncher.Platform.Linux);
+    }
+
+    private static void MirrorPlatformOverride(PlatformLauncherOverride target, PlatformLauncherOverride source)
+    {
+        target.LaunchCommand = source.LaunchCommand;
+        target.TerminalProgram = source.TerminalProgram;
+        target.TerminalArgsTemplate = source.TerminalArgsTemplate;
+        target.TerminalRawCommand = source.TerminalRawCommand;
+        target.KeepTerminalOpen = source.KeepTerminalOpen;
     }
 
     private static string DefaultIdFor(SourceConfigKind kind, string host) => kind switch
