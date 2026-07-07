@@ -17,15 +17,18 @@ public sealed class InboxSyncHostedService : BackgroundService
     private readonly InboxState _state;
     private readonly IConfiguration _config;
     private readonly ILogger<InboxSyncHostedService> _log;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly SemaphoreSlim _syncGate = new(1, 1);
     private volatile bool _syncing;
     private int _configChangedFlag;
 
-    public InboxSyncHostedService(InboxState state, IConfiguration config, ILogger<InboxSyncHostedService> log)
+    public InboxSyncHostedService(InboxState state, IConfiguration config, ILogger<InboxSyncHostedService> log,
+        ILoggerFactory loggerFactory)
     {
         _state = state;
         _config = config;
         _log = log;
+        _loggerFactory = loggerFactory;
     }
 
     /// <summary>True while a fast+enrich pass is running (either automatic or manual).</summary>
@@ -57,13 +60,16 @@ public sealed class InboxSyncHostedService : BackgroundService
     {
         if (!await _syncGate.WaitAsync(0, ct))
         {
+            _log.LogDebug("Manual sync trigger ignored because a sync is already running.");
             return false; // already running
         }
         try
         {
             _syncing = true;
+            _log.LogInformation("Manual sync trigger accepted.");
             _state.NoteSync("Manual refresh started...");
             await RunSyncIterationAsync(ct);
+            _log.LogInformation("Manual sync trigger completed.");
             return true;
         }
         finally
@@ -77,6 +83,10 @@ public sealed class InboxSyncHostedService : BackgroundService
     {
         var intervalSec = _config.GetValue<int?>("PrInbox:SyncIntervalSeconds") ?? 300;
         var runOnStartup = _config.GetValue<bool?>("PrInbox:FastSyncOnStartup") ?? true;
+        _log.LogInformation(
+            "Inbox sync hosted service started (intervalSeconds={IntervalSeconds}, fastOnStartup={FastOnStartup}).",
+            intervalSec,
+            runOnStartup);
 
         // Tier 1 — read cache so the page renders immediately.
         try
@@ -127,6 +137,7 @@ public sealed class InboxSyncHostedService : BackgroundService
     {
         try
         {
+            _log.LogInformation("Sync iteration started.");
             var fastFailures = await RunFastSyncAsync(ct);
             await RefreshFromCacheAsync(ct);
             var enrichFailures = await RunEnrichSyncAsync(ct);
@@ -137,6 +148,11 @@ public sealed class InboxSyncHostedService : BackgroundService
                 ? $" ({totalFailures} source(s) failed; see logs)"
                 : "";
             _state.NoteSync($"Synced at {DateTimeOffset.Now:HH:mm:ss}{suffix}");
+            _log.LogInformation(
+                "Sync iteration completed (fastFailures={FastFailures}, enrichFailures={EnrichFailures}, totalFailures={TotalFailures}).",
+                fastFailures,
+                enrichFailures,
+                totalFailures);
         }
         catch (Exception ex)
         {
@@ -163,6 +179,7 @@ public sealed class InboxSyncHostedService : BackgroundService
                 snap?.CiStatus, snap?.MergeableState, snap?.ReviewDecision));
         }
         _state.ReplaceAll(rows);
+        _log.LogDebug("Cache refresh completed (rows={RowCount}).", rows.Count);
     }
 
     /// <summary>
@@ -185,9 +202,12 @@ public sealed class InboxSyncHostedService : BackgroundService
         if (config.Sources.Count == 0 && config.Ado.Projects.Count == 0) return 0;
 
         var (prRepo, threadRepo, snapRepo, syncRunRepo, _) = OpenFullRepos();
-        var runtimes = new SourceFactory().Build(config);
+        var runtimes = new SourceFactory().Build(config, _loggerFactory);
+        _log.LogInformation("Fast sync pass started (runtimeCount={RuntimeCount}).", runtimes.Count);
 
-        return await RunFastSyncAsync(runtimes, prRepo, snapRepo, threadRepo, syncRunRepo, ct);
+        var failures = await RunFastSyncAsync(runtimes, prRepo, snapRepo, threadRepo, syncRunRepo, ct);
+        _log.LogInformation("Fast sync pass completed (runtimeCount={RuntimeCount}, failures={Failures}).", runtimes.Count, failures);
+        return failures;
     }
 
     /// <summary>
@@ -241,6 +261,7 @@ public sealed class InboxSyncHostedService : BackgroundService
     {
         try
         {
+            log.LogDebug("Fast sync started for source {SourceId} (identity={Identity}).", rt.Source.SourceId, rt.Identity);
             var orchestrator = new SyncOrchestrator(rt.Source, prRepo, snapRepo, threadRepo, syncRunRepo);
             var progress = new Progress<SyncProgress>();
             var result = await orchestrator.RunFastAsync(rt.Identity, progress, ct);
@@ -266,7 +287,14 @@ public sealed class InboxSyncHostedService : BackgroundService
                 }
             }
 
-            return result.Status == SyncRunStatus.Failed ? 1 : 0;
+            var failed = result.Status == SyncRunStatus.Failed ? 1 : 0;
+            log.LogInformation(
+                "Fast sync finished for source {SourceId} (status={Status}, prsSeen={PrsSeen}, prsFailed={PrsFailed}).",
+                rt.Source.SourceId,
+                result.Status,
+                result.PrsSeen,
+                result.PrsFailed);
+            return failed;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -301,7 +329,8 @@ public sealed class InboxSyncHostedService : BackgroundService
         if (config.Sources.Count == 0 && config.Ado.Projects.Count == 0) return 0;
 
         var (prRepo, threadRepo, snapRepo, syncRunRepo, _) = OpenFullRepos();
-        var runtimes = new SourceFactory().Build(config);
+        var runtimes = new SourceFactory().Build(config, _loggerFactory);
+        _log.LogInformation("Enrich sync pass started (runtimeCount={RuntimeCount}).", runtimes.Count);
 
         var failures = 0;
 
@@ -355,6 +384,12 @@ public sealed class InboxSyncHostedService : BackgroundService
 
         var totalVisible = partitions.Sum(p => p.Visible.Count);
         var totalHidden = partitions.Sum(p => p.Hidden.Count);
+        _log.LogInformation(
+            "Enrich partition built (sources={SourceCount}, visibleCandidates={VisibleCount}, hiddenCandidates={HiddenCount}, setupFailures={SetupFailures}).",
+            partitions.Count,
+            totalVisible,
+            totalHidden,
+            failures);
 
         // Pass 1: visible across every source. Done first so the rows the
         // user can see on the dashboard refresh as quickly as possible.
@@ -444,6 +479,12 @@ public sealed class InboxSyncHostedService : BackgroundService
                 _log.LogWarning(ex, "TTL sweep of {SourceId} failed", rt.Source.SourceId);
             }
         }
+        _log.LogInformation(
+            "Enrich sync pass completed (sources={SourceCount}, visibleCandidates={VisibleCount}, hiddenCandidates={HiddenCount}, failures={Failures}).",
+            partitions.Count,
+            totalVisible,
+            totalHidden,
+            failures);
         return failures;
     }
 
@@ -482,9 +523,10 @@ public sealed class InboxSyncHostedService : BackgroundService
         if (string.IsNullOrWhiteSpace(prUrl)) return (false, "Empty PR URL.");
         try
         {
+            _log.LogInformation("Single-PR enrich requested for {Url}.", prUrl);
             var config = await PrInboxConfig.LoadAsync(null);
             var (prRepo, threadRepo, snapRepo, syncRunRepo, tagRepo) = OpenFullRepos();
-            var runtimes = new SourceFactory().Build(config);
+            var runtimes = new SourceFactory().Build(config, _loggerFactory);
 
             // Match runtime by SourceId via the row's recorded binding so we
             // never try to enrich a PR with the wrong identity / token.
@@ -519,6 +561,7 @@ public sealed class InboxSyncHostedService : BackgroundService
                 _log.LogDebug(ex, "Post-enrich inbox refresh failed for {Url}", prUrl);
             }
 
+            _log.LogInformation("Single-PR enrich completed for {Url}.", prUrl);
             return (true, null);
         }
         catch (Exception ex)

@@ -83,6 +83,7 @@ builder.Services.AddSingleton<ThreadResolveOrchestrator>(sp => new ThreadResolve
     sp.GetRequiredService<ILogger<ThreadResolveOrchestrator>>()));
 
 var app = builder.Build();
+app.Logger.LogInformation("pr-inbox web host starting (environment={Environment}).", app.Environment.EnvironmentName);
 
 // Force-resolve the orchestrator + selector at startup so the
 // publisher dictionary is built outside any HTTP request context.
@@ -114,9 +115,11 @@ app.MapGet("/healthz", () => Results.Text("ok"));
 // so a stray local web page can't POST the app into shutting down.
 app.MapPost("/shutdown", (HttpContext ctx, IHostApplicationLifetime lifetime) =>
 {
+    var remoteText = ctx.Connection.RemoteIpAddress?.ToString() ?? "<unknown>";
     var remote = ctx.Connection.RemoteIpAddress;
     if (remote is null || !System.Net.IPAddress.IsLoopback(remote))
     {
+        app.Logger.LogWarning("Shutdown request rejected: non-loopback caller {RemoteIp}.", remoteText);
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     }
 
@@ -127,6 +130,7 @@ app.MapPost("/shutdown", (HttpContext ctx, IHostApplicationLifetime lifetime) =>
     var expected = Environment.GetEnvironmentVariable("PRINBOX_SHUTDOWN_TOKEN");
     if (string.IsNullOrEmpty(expected))
     {
+        app.Logger.LogWarning("Shutdown request rejected: PRINBOX_SHUTDOWN_TOKEN is not configured (caller={RemoteIp}).", remoteText);
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     }
     var provided = ctx.Request.Headers["X-Shutdown-Token"].ToString();
@@ -135,8 +139,11 @@ app.MapPost("/shutdown", (HttpContext ctx, IHostApplicationLifetime lifetime) =>
         System.Text.Encoding.UTF8.GetBytes(expected));
     if (!match)
     {
+        app.Logger.LogWarning("Shutdown request rejected: invalid shutdown token (caller={RemoteIp}).", remoteText);
         return Results.StatusCode(StatusCodes.Status403Forbidden);
     }
+
+    app.Logger.LogInformation("Shutdown request accepted from {RemoteIp}.", remoteText);
 
     // Defer so the 202 response flushes before Kestrel starts draining.
     _ = Task.Run(async () =>
@@ -160,6 +167,7 @@ if (app.Services.GetRequiredService<IReviewLauncher>() is ReviewLauncher rl)
 // so a pr-inbox exit never leaves a review window orphaned out of view.
 app.Lifetime.ApplicationStopping.Register(() =>
 {
+    app.Logger.LogInformation("pr-inbox web host stopping: restoring tracked console windows.");
     try { app.Services.GetRequiredService<ConsoleWindowRegistry>().RestoreAll(); }
     catch { /* shutdown best-effort */ }
 });

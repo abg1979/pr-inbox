@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using PrInbox.Core.Credentials;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -30,9 +31,14 @@ internal sealed class ConfigImportCommand : AsyncCommand<ConfigImportSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, ConfigImportSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<ConfigImportCommand>();
+        log.LogInformation("CLI config import started (file={File}, configPath={ConfigPath}, yes={Yes}).",
+            settings.File, settings.ConfigPath ?? "<default>", settings.Yes);
+
         if (!System.IO.File.Exists(settings.File))
         {
             AnsiConsole.MarkupLine($"[red]Profile not found:[/] {Markup.Escape(settings.File)}");
+            log.LogWarning("CLI config import failed: profile file not found: {File}.", settings.File);
             return 1;
         }
 
@@ -45,12 +51,14 @@ internal sealed class ConfigImportCommand : AsyncCommand<ConfigImportSettings>
         catch (Exception ex)
         {
             AnsiConsole.MarkupLine($"[red]Could not parse profile:[/] {Markup.Escape(ex.Message)}");
+            log.LogWarning(ex, "CLI config import failed to parse profile {File}.", settings.File);
             return 1;
         }
 
         if (profile is null)
         {
             AnsiConsole.MarkupLine("[red]Empty or invalid profile.[/]");
+            log.LogWarning("CLI config import failed: profile deserialized to null for {File}.", settings.File);
             return 1;
         }
 
@@ -63,6 +71,7 @@ internal sealed class ConfigImportCommand : AsyncCommand<ConfigImportSettings>
             AnsiConsole.MarkupLine(
                 $"[red]Import rejected.[/] Profile does not support this platform ([bold]{currentPlatform}[/]). " +
                 $"Supported platforms: [grey]{Markup.Escape(declared)}[/].");
+            log.LogWarning("CLI config import rejected profile {File}: unsupported platform {Platform}.", settings.File, currentPlatform);
             return 1;
         }
 
@@ -89,11 +98,13 @@ internal sealed class ConfigImportCommand : AsyncCommand<ConfigImportSettings>
                 {
                     AnsiConsole.MarkupLine("[red]Import aborted.[/] A profile launch command needs confirmation; "
                         + "re-run with [bold]--yes[/] to apply it non-interactively.");
+                    log.LogWarning("CLI config import aborted due to non-interactive confirmation requirement for {File}.", settings.File);
                     return 1;
                 }
                 if (!AnsiConsole.Confirm("Apply this launch command?", defaultValue: false))
                 {
                     AnsiConsole.MarkupLine("[red]Import aborted.[/] No changes were saved.");
+                    log.LogInformation("CLI config import cancelled by user for {File}.", settings.File);
                     return 1;
                 }
             }
@@ -103,11 +114,13 @@ internal sealed class ConfigImportCommand : AsyncCommand<ConfigImportSettings>
         if (changes.Count == 0)
         {
             AnsiConsole.MarkupLine("[yellow]Profile contained nothing to import.[/]");
+            log.LogInformation("CLI config import completed with no-op for {File}.", settings.File);
             return 0;
         }
 
         await config.SaveAsync(settings.ConfigPath);
         AnsiConsole.MarkupLine($"[green]Imported[/] {Markup.Escape(string.Join(", ", changes))} from [cyan]{Markup.Escape(settings.File)}[/].");
+        log.LogInformation("CLI config import completed (file={File}, changes={Changes}).", settings.File, string.Join(", ", changes));
         return 0;
     }
 }

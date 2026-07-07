@@ -115,8 +115,10 @@ internal sealed class WebHostProcess : IDisposable
                 using var resp = await http.GetAsync($"{BaseUrl}/healthz", ct).ConfigureAwait(false);
                 if (resp.IsSuccessStatusCode)
                 {
+                    TrayLog.Write($"WaitForHealthy: /healthz OK ({(int)resp.StatusCode}).");
                     return true;
                 }
+                TrayLog.Write($"WaitForHealthy: /healthz non-success ({(int)resp.StatusCode}).");
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -155,10 +157,12 @@ internal sealed class WebHostProcess : IDisposable
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
             using var resp = await http.GetAsync($"{BaseUrl}/healthz", ct).ConfigureAwait(false);
+            TrayLog.Write($"IsHealthy: /healthz status {(int)resp.StatusCode}.");
             return resp.IsSuccessStatusCode;
         }
         catch
         {
+            TrayLog.Write("IsHealthy: /healthz failed.");
             return false;
         }
     }
@@ -183,9 +187,11 @@ internal sealed class WebHostProcess : IDisposable
                 using var req = new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/shutdown");
                 req.Headers.TryAddWithoutValidation("X-Shutdown-Token", _token);
                 using var resp = await http.SendAsync(req).ConfigureAwait(false);
+                TrayLog.Write($"StopAsync: /shutdown responded {(int)resp.StatusCode}.");
             }
             catch
             {
+                TrayLog.Write("StopAsync: /shutdown request failed, falling back to wait/kill.");
                 // Fall through to wait + kill.
             }
 

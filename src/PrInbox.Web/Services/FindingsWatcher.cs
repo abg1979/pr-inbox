@@ -38,6 +38,7 @@ public sealed class FindingsWatcher : IDisposable
         _fsw.Renamed += (_, _) => Trigger();
 
         _debounce = new System.Threading.Timer(_ => Reload(), null, Timeout.Infinite, Timeout.Infinite);
+        _log.LogDebug("Findings watcher created (url={Url}, runDir={RunDir}).", _prUrl, _runDir);
 
         // Initial read in case the file already exists (e.g., a previous run).
         if (File.Exists(Path.Combine(runDir, "findings.yaml")))
@@ -49,6 +50,7 @@ public sealed class FindingsWatcher : IDisposable
     private void Trigger()
     {
         // FileSystemWatcher fires multiple events for one save; debounce.
+        _log.LogDebug("Findings watcher trigger received (url={Url}, runDir={RunDir}).", _prUrl, _runDir);
         try { _debounce.Change(250, Timeout.Infinite); } catch (ObjectDisposedException) { }
     }
 
@@ -91,6 +93,7 @@ public sealed class FindingsWatcher : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _log.LogDebug("Findings watcher disposing (url={Url}, runDir={RunDir}).", _prUrl, _runDir);
         try { _fsw.EnableRaisingEvents = false; } catch { }
         _fsw.Dispose();
         _debounce.Dispose();

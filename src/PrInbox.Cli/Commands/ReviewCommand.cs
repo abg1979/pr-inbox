@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using PrInbox.Core.Reviewing;
 using PrInbox.Core.Storage;
 using Spectre.Console;
@@ -21,6 +22,9 @@ internal sealed class ReviewCommand : AsyncCommand<ReviewSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, ReviewSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<ReviewCommand>();
+        log.LogInformation("CLI review command started (url={PrUrl}, refresh={Refresh}).", settings.PrId, settings.Refresh);
+
         var db = new PrInboxDb(PrInboxDb.DefaultUserConnectionString());
         await new MigrationRunner().MigrateAsync(db.ConnectionString);
 
@@ -38,6 +42,7 @@ internal sealed class ReviewCommand : AsyncCommand<ReviewSettings>
         catch (BriefCreationException ex)
         {
             AnsiConsole.MarkupLine($"[red]{Markup.Escape(ex.Message)}[/]");
+            log.LogWarning("CLI review command failed to build brief for {PrUrl}: {Message}", settings.PrId, ex.Message);
             return 1;
         }
 
@@ -51,6 +56,11 @@ internal sealed class ReviewCommand : AsyncCommand<ReviewSettings>
         AnsiConsole.MarkupLine($"  [grey]copilot --prompt \"{Markup.Escape(result.BriefPath)}\"[/]");
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[grey](Copy the path into a fresh Copilot session and ask it to use the dual-model-review agent.)[/]");
+        log.LogInformation(
+            "CLI review command completed (runId={RunId}, head={HeadSha}, briefPath={BriefPath}).",
+            result.RunId,
+            result.HeadSha,
+            result.BriefPath);
         return 0;
     }
 }

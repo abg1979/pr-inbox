@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using PrInbox.Core.Models;
 using PrInbox.Core.Storage;
 using Spectre.Console;
@@ -22,6 +23,9 @@ internal sealed class ListCommand : AsyncCommand<ListSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, ListSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<ListCommand>();
+        log.LogInformation("CLI list command started (all={All}, source={SourceId}).", settings.All, settings.SourceId ?? "<all>");
+
         var db = new PrInboxDb(PrInboxDb.DefaultUserConnectionString());
         await new MigrationRunner().MigrateAsync(db.ConnectionString);
 
@@ -42,6 +46,7 @@ internal sealed class ListCommand : AsyncCommand<ListSettings>
         if (rows.Count == 0)
         {
             AnsiConsole.MarkupLine("[yellow]Inbox is empty.[/] Run [bold]pr-inbox sync[/] first.");
+            log.LogInformation("CLI list command completed with empty inbox.");
             return 0;
         }
 
@@ -101,6 +106,7 @@ internal sealed class ListCommand : AsyncCommand<ListSettings>
             }
         }
 
+        log.LogInformation("CLI list command completed (rows={RowCount}, sourceStatusCount={StatusCount}).", rows.Count, sourceStatuses.Count);
         return 0;
     }
 

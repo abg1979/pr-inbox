@@ -82,6 +82,7 @@ public sealed class SyncOrchestrator
     public async Task<SyncResult> RunFastAsync(string identityUsed, IProgress<SyncProgress>? progress, CancellationToken ct)
     {
         var runId = await _syncRuns.StartAsync(_source.SourceId, identityUsed, ct);
+        _logger.LogInformation("Fast sync started (runId={RunId}, sourceId={SourceId}, identity={Identity}).", runId, _source.SourceId, identityUsed);
         var syncedAt = DateTimeOffset.UtcNow;
         var prsSeen = 0;
         var prsFailed = 0;
@@ -175,6 +176,15 @@ public sealed class SyncOrchestrator
                 _logger.LogError(ex, "Failed to finalize sync_run {RunId}.", runId);
             }
         }
+
+        _logger.LogInformation(
+            "Fast sync completed (runId={RunId}, sourceId={SourceId}, status={Status}, prsSeen={PrsSeen}, prsFailed={PrsFailed}, seenUrls={SeenCount}).",
+            runId,
+            _source.SourceId,
+            finalStatus,
+            prsSeen,
+            prsFailed,
+            seenIdentities.Count);
 
         return new SyncResult(runId, _source.SourceId, finalStatus, prsSeen, prsFailed, finalError, seenIdentities);
     }
@@ -288,6 +298,12 @@ public sealed class SyncOrchestrator
         string? tierLabel = null)
     {
         var runId = await _syncRuns.StartAsync(_source.SourceId, identityUsed, ct);
+        _logger.LogInformation(
+            "Enrich sync started (runId={RunId}, sourceId={SourceId}, identity={Identity}, tier={Tier}).",
+            runId,
+            _source.SourceId,
+            identityUsed,
+            tierLabel ?? "default");
         var prsSeen = 0;
         var prsFailed = 0;
         SyncRunStatus finalStatus = SyncRunStatus.Failed;
@@ -352,6 +368,15 @@ public sealed class SyncOrchestrator
                 _logger.LogError(ex, "Failed to finalize sync_run {RunId}.", runId);
             }
         }
+
+        _logger.LogInformation(
+            "Enrich sync completed (runId={RunId}, sourceId={SourceId}, status={Status}, prsSeen={PrsSeen}, prsFailed={PrsFailed}, tier={Tier}).",
+            runId,
+            _source.SourceId,
+            finalStatus,
+            prsSeen,
+            prsFailed,
+            tierLabel ?? "default");
 
         return new SyncResult(runId, _source.SourceId, finalStatus, prsSeen, prsFailed, finalError);
     }
@@ -440,6 +465,7 @@ public sealed class SyncOrchestrator
     /// </summary>
     public async Task<string?> RunEnrichOneAsync(string prUrl, CancellationToken ct)
     {
+        _logger.LogInformation("Single-PR enrich started (sourceId={SourceId}, url={Url}).", _source.SourceId, prUrl);
         var row = await _pullRequests.GetAsync(prUrl, ct);
         if (row is null) return null;
 
@@ -454,11 +480,13 @@ public sealed class SyncOrchestrator
         {
             await EnrichOneAsync(row, ct);
             await _syncRuns.CompleteAsync(runId, SyncRunStatus.Ok, 1, null, CancellationToken.None);
+            _logger.LogInformation("Single-PR enrich completed (sourceId={SourceId}, url={Url}, runId={RunId}).", _source.SourceId, prUrl, runId);
             return row.Identity.Url;
         }
         catch (Exception ex)
         {
             await _syncRuns.CompleteAsync(runId, SyncRunStatus.Failed, 0, $"{ex.GetType().Name}: {ex.Message}", CancellationToken.None);
+            _logger.LogWarning(ex, "Single-PR enrich failed (sourceId={SourceId}, url={Url}, runId={RunId}).", _source.SourceId, prUrl, runId);
             throw;
         }
     }

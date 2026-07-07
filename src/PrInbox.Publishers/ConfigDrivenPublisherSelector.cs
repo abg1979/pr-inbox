@@ -48,6 +48,7 @@ public sealed class ConfigDrivenPublisherSelector : IPublisherSelector
             throw new InvalidOperationException(
                 $"No publisher configured for host '{target.Host}'. Registered hosts: {string.Join(", ", _defaultIdentityByHost.Keys)}.");
         }
+        _log.LogDebug("Publisher selector matched default identity (url={Url}, host={Host}, identity={Identity}).", prUrl, host, defaultIdentity);
         return SelectFor(prUrl, defaultIdentity);
     }
 
@@ -57,11 +58,17 @@ public sealed class ConfigDrivenPublisherSelector : IPublisherSelector
         var host = target.Host.ToLowerInvariant();
         if (_byPair.TryGetValue((host, identityUsed), out var pub))
         {
+            _log.LogDebug("Publisher selector matched exact host/identity (url={Url}, host={Host}, identity={Identity}).", prUrl, host, identityUsed);
             return pub;
         }
         // Fallback: any publisher for that host.
         var any = _byPair.FirstOrDefault(kv => kv.Key.Host == host).Value;
-        if (any is not null) return any;
+        if (any is not null)
+        {
+            _log.LogWarning("Publisher selector fell back to host-only match (url={Url}, host={Host}, requestedIdentity={Identity}).",
+                prUrl, host, identityUsed);
+            return any;
+        }
         throw new InvalidOperationException(
             $"No publisher configured for ({target.Host}, {identityUsed}). Registered pairs: {string.Join(", ", _byPair.Keys.Select(k => $"({k.Host},{k.Identity})"))}.");
     }

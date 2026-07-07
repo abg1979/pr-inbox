@@ -166,7 +166,8 @@ public class InboxSyncHostedServiceParallelFastTests : IAsyncLifetime
         return new InboxSyncHostedService(
             new InboxState(),
             config,
-            NullLogger<InboxSyncHostedService>.Instance);
+            NullLogger<InboxSyncHostedService>.Instance,
+            NullLoggerFactory.Instance);
     }
 
     private static PrInbox.Sources.Fakes.FakePrReadSource BuildHappySource(string sourceId, int prCount)

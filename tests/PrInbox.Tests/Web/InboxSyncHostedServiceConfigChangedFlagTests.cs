@@ -27,7 +27,8 @@ public class InboxSyncHostedServiceConfigChangedFlagTests
     private static InboxSyncHostedService NewHost() =>
         new(new InboxState(),
             new ConfigurationBuilder().Build(),
-            NullLogger<InboxSyncHostedService>.Instance);
+            NullLogger<InboxSyncHostedService>.Instance,
+            NullLoggerFactory.Instance);
 
     [Fact]
     public void Fresh_Host_Consume_Returns_False()

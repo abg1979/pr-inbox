@@ -14,6 +14,7 @@ var baseUrl = $"http://localhost:{port}";
 var webHost = ResolveWebHost();
 
 Console.WriteLine($"PR Inbox Launcher");
+Console.WriteLine($"Using URL: {baseUrl}");
 
 if (webHost is null)
 {
@@ -24,6 +25,7 @@ if (webHost is null)
         "or build the solution first: dotnet build PrInbox.slnx");
     return 1;
 }
+Console.WriteLine($"Resolved web host: {webHost.LaunchFileName} {webHost.Arguments}".Trim());
 
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
@@ -89,6 +91,7 @@ async Task<bool> WaitForHealthyAsync(string url, TimeSpan timeout, CancellationT
             using var resp = await http.GetAsync($"{url}/healthz", ct);
             if (resp.IsSuccessStatusCode)
                 return true;
+            Console.WriteLine($"Health probe returned {(int)resp.StatusCode}.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return false; }
         catch { }
@@ -106,9 +109,13 @@ async Task StopAsync(string url, string shutdownToken, Process proc)
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{url}/shutdown");
         req.Headers.TryAddWithoutValidation("X-Shutdown-Token", shutdownToken);
-        await http.SendAsync(req);
+        using var resp = await http.SendAsync(req);
+        Console.WriteLine($"Shutdown endpoint returned {(int)resp.StatusCode}.");
     }
-    catch { }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Shutdown endpoint call failed: {ex.Message}");
+    }
 
     try
     {

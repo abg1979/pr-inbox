@@ -41,10 +41,18 @@ public sealed class ReviewPublishOrchestrator
     /// </summary>
     public async Task<PublishResult> PublishAsync(PublishRequest request, CancellationToken ct)
     {
+        _log.LogInformation(
+            "Publish request started (url={Url}, runId={RunId}, dryRun={DryRun}, event={Event}, selectedFindings={FindingCount}).",
+            request.PrUrl,
+            request.RunId,
+            request.DryRun,
+            request.Event,
+            request.Findings.Count);
         IPrReviewPublisher publisher;
         try { publisher = _selector.Select(request.PrUrl); }
         catch (Exception ex)
         {
+            _log.LogWarning(ex, "Publish request failed during publisher selection (url={Url}).", request.PrUrl);
             return PublishResult.Failure(_selector.IdentityForLogging(request.PrUrl) ?? "unknown",
                 $"Cannot select a publisher for {request.PrUrl}: {ex.Message}");
         }
@@ -69,6 +77,7 @@ public sealed class ReviewPublishOrchestrator
         var prRow = await _prRepo.GetAsync(request.PrUrl, ct);
         if (prRow is null)
         {
+            _log.LogWarning("Publish request rejected: PR not found in inbox (url={Url}).", request.PrUrl);
             return PublishResult.Failure("unknown",
                 $"PR {request.PrUrl} not found in inbox; sync the inbox first.");
         }
@@ -104,6 +113,7 @@ public sealed class ReviewPublishOrchestrator
         if (freshFindings.Count == 0)
         {
             // Nothing to do; still useful to report skipped count.
+            _log.LogInformation("Publish request no-op: all findings already posted (url={Url}, skipped={Skipped}).", request.PrUrl, skipped);
             return new PublishResult(
                 Posted: false,
                 PlatformReviewId: null,
@@ -122,6 +132,15 @@ public sealed class ReviewPublishOrchestrator
         var filteredRequest = request with { Findings = freshFindings };
         var result = await publisher.PublishAsync(filteredRequest, ct);
         result = result with { SkippedAsAlreadyPosted = skipped };
+        _log.LogInformation(
+            "Publish request publisher response (url={Url}, posted={Posted}, inline={InlineCount}, bodyOnly={BodyOnlyCount}, skippedAlreadyPosted={Skipped}, warnings={WarningCount}, errors={ErrorCount}).",
+            request.PrUrl,
+            result.Posted,
+            result.InlineCount,
+            result.BodyOnlyCount,
+            result.SkippedAsAlreadyPosted,
+            result.Warnings.Count,
+            result.Errors.Count);
 
         // 4. On success and live mode, record what we just posted.
         if (result.Posted && !request.DryRun && !string.IsNullOrEmpty(result.PlatformReviewId))
@@ -154,6 +173,13 @@ public sealed class ReviewPublishOrchestrator
                 result = result with { Warnings = amendedWarnings };
             }
         }
+
+        _log.LogInformation(
+            "Publish request completed (url={Url}, posted={Posted}, platformReviewId={PlatformReviewId}, headChanged={HeadChanged}).",
+            request.PrUrl,
+            result.Posted,
+            result.PlatformReviewId ?? "<none>",
+            result.HeadChanged);
 
         return result;
     }

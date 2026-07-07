@@ -94,6 +94,11 @@ public sealed class ThreadResolveOrchestrator
         bool dryRun,
         CancellationToken ct)
     {
+        _log.LogInformation(
+            "Thread resolve request started (url={Url}, requestedCount={RequestedCount}, dryRun={DryRun}).",
+            prUrl,
+            requestedThreadNodeIds.Count,
+            dryRun);
         if (string.IsNullOrWhiteSpace(prUrl))
         {
             return ThreadResolveOrchestratorResult.Failure("prUrl is required.");
@@ -162,6 +167,15 @@ public sealed class ThreadResolveOrchestrator
             var pubResult = await publisher.ResolveThreadsAsync(
                 new ThreadResolveRequest(prUrl, validatedIds, dryRun),
                 ct);
+            _log.LogInformation(
+                "Thread resolve publisher response (url={Url}, performed={Performed}, resolved={ResolvedCount}, alreadyResolved={AlreadyResolvedCount}, failed={FailedCount}, warnings={WarningCount}, errors={ErrorCount}).",
+                prUrl,
+                pubResult.Performed,
+                pubResult.ResolvedNodeIds.Count,
+                pubResult.AlreadyResolvedNodeIds.Count,
+                pubResult.FailedNodeIds.Count,
+                pubResult.Warnings.Count,
+                pubResult.Errors.Count);
 
             var rowsMarked = 0;
             if (!dryRun && pubResult.Performed)

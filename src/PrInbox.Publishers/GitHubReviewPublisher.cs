@@ -62,6 +62,13 @@ public sealed class GitHubReviewPublisher : IPrReviewPublisher
 
     public async Task<PublishResult> PublishAsync(PublishRequest request, CancellationToken ct)
     {
+        _log.LogInformation(
+            "GitHub publish started (identity={Identity}, url={Url}, dryRun={DryRun}, event={Event}, findings={FindingCount}).",
+            _identityUsed,
+            request.PrUrl,
+            request.DryRun,
+            request.Event,
+            request.Findings.Count);
         // For a plain "comment" review, the user must pick at least one
         // finding (otherwise we'd post a review with nothing in it). For an
         // explicit approve / request-changes vote, an empty selection is
@@ -94,6 +101,8 @@ public sealed class GitHubReviewPublisher : IPrReviewPublisher
         // DRY RUN: no network at all.
         if (request.DryRun)
         {
+            _log.LogInformation("GitHub publish dry-run planned (identity={Identity}, url={Url}, inline={InlineCount}, bodyOnly={BodyOnlyCount}).",
+                _identityUsed, request.PrUrl, anchorable.Count, nonAnchorable.Count);
             return PublishResult.DryRunPlan(
                 inlineCount: anchorable.Count,
                 bodyOnlyCount: nonAnchorable.Count,
@@ -180,6 +189,16 @@ public sealed class GitHubReviewPublisher : IPrReviewPublisher
             return PublishResult.Failure(_identityUsed, "GitHub API returned 2xx without a review id.");
         }
 
+        _log.LogInformation(
+            "GitHub publish completed (identity={Identity}, url={Url}, reviewId={ReviewId}, inline={InlineCount}, bodyOnly={BodyOnlyCount}, headChanged={HeadChanged}, warnings={WarningCount}).",
+            _identityUsed,
+            request.PrUrl,
+            created.IdString,
+            anchorable.Count,
+            nonAnchorable.Count,
+            headChanged,
+            warnings.Count);
+
         return new PublishResult(
             Posted: true,
             PlatformReviewId: created.IdString,
@@ -208,6 +227,12 @@ public sealed class GitHubReviewPublisher : IPrReviewPublisher
     public async Task<ThreadResolveResult> ResolveThreadsAsync(
         ThreadResolveRequest request, CancellationToken ct)
     {
+        _log.LogInformation(
+            "GitHub thread resolve started (identity={Identity}, url={Url}, dryRun={DryRun}, threadCount={ThreadCount}).",
+            _identityUsed,
+            request.PrUrl,
+            request.DryRun,
+            request.ThreadNodeIds.Count);
         if (request.ThreadNodeIds.Count == 0)
         {
             return ThreadResolveResult.Failure(_identityUsed, "No thread ids supplied.");
@@ -239,6 +264,8 @@ public sealed class GitHubReviewPublisher : IPrReviewPublisher
 
         if (request.DryRun)
         {
+            _log.LogInformation("GitHub thread resolve dry-run planned (identity={Identity}, url={Url}, threadCount={ThreadCount}).",
+                _identityUsed, request.PrUrl, ids.Count);
             return ThreadResolveResult.DryRunPlan(
                 wouldResolve: ids,
                 identityUsed: _identityUsed,
@@ -277,7 +304,7 @@ public sealed class GitHubReviewPublisher : IPrReviewPublisher
             }
         }
 
-        return new ThreadResolveResult(
+        var result = new ThreadResolveResult(
             Performed: true,
             ResolvedNodeIds: resolved,
             AlreadyResolvedNodeIds: alreadyResolved,
@@ -285,6 +312,14 @@ public sealed class GitHubReviewPublisher : IPrReviewPublisher
             IdentityUsed: _identityUsed,
             Warnings: warnings,
             Errors: errors);
+        _log.LogInformation(
+            "GitHub thread resolve completed (identity={Identity}, url={Url}, resolved={ResolvedCount}, alreadyResolved={AlreadyResolvedCount}, failed={FailedCount}).",
+            _identityUsed,
+            request.PrUrl,
+            resolved.Count,
+            alreadyResolved.Count,
+            failed.Count);
+        return result;
     }
 
     private enum ResolveStatus { Resolved, AlreadyResolved, Failed }

@@ -78,6 +78,8 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var reviewerId = await ResolveReviewerIdAsync(ct);
+        _logger.LogInformation("ADO assigned listing started (sourceId={SourceId}, org={Org}, project={Project}).", SourceId, _org, _project);
+        var emitted = 0;
 
         await foreach (var pr in _client.ListPullRequestsForReviewerAsync(_project, reviewerId, pageSize: 100, ct))
         {
@@ -85,9 +87,12 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
             var mapped = MapListItem(pr);
             if (mapped is not null)
             {
+                emitted++;
                 yield return mapped;
             }
         }
+        _logger.LogInformation("ADO assigned listing completed (sourceId={SourceId}, org={Org}, project={Project}, count={Count}).",
+            SourceId, _org, _project, emitted);
     }
 
     public async IAsyncEnumerable<RemotePullRequest> ListAuthoredFastAsync(
@@ -97,6 +102,8 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
         // query; ADO has no global authored inbox either, so we enumerate the
         // configured project keyed on searchCriteria.creatorId.
         var creatorId = await ResolveReviewerIdAsync(ct);
+        _logger.LogInformation("ADO authored listing started (sourceId={SourceId}, org={Org}, project={Project}).", SourceId, _org, _project);
+        var emitted = 0;
 
         await foreach (var pr in _client.ListPullRequestsForCreatorAsync(_project, creatorId, pageSize: 100, ct))
         {
@@ -104,13 +111,17 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
             var mapped = MapListItem(pr);
             if (mapped is not null)
             {
+                emitted++;
                 yield return mapped;
             }
         }
+        _logger.LogInformation("ADO authored listing completed (sourceId={SourceId}, org={Org}, project={Project}, count={Count}).",
+            SourceId, _org, _project, emitted);
     }
 
     public async Task<PrEnrichmentBundle> EnrichAsync(PrIdentity id, CancellationToken ct)
     {
+        _logger.LogInformation("ADO enrich started (sourceId={SourceId}, url={Url}).", SourceId, id.Url);
         var (repoId, prId) = ParseAdoUrl(id.Url);
 
         var detailTask = _client.GetPullRequestAsync(_project, repoId, prId, ct);
@@ -121,6 +132,12 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
 
         var detail = MapDetail(id, detailTask.Result, commitsTask.Result);
         var threads = MapThreads(threadsTask.Result);
+        _logger.LogInformation(
+            "ADO enrich completed (sourceId={SourceId}, url={Url}, commits={CommitCount}, threads={ThreadCount}).",
+            SourceId,
+            id.Url,
+            commitsTask.Result.Count,
+            threads.Count);
         return new PrEnrichmentBundle(detail, threads);
     }
 

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using PrInbox.Core.Credentials;
 using PrInbox.Core.Storage;
 using PrInbox.Sources;
@@ -30,9 +31,18 @@ internal sealed class SyncCommand : AsyncCommand<SyncSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, SyncSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<SyncCommand>();
+        log.LogInformation(
+            "CLI sync command started (source={SourceId}, fast={Fast}, enrich={Enrich}, configPath={ConfigPath}).",
+            settings.SourceId ?? "<all>",
+            settings.Fast,
+            settings.Enrich,
+            settings.ConfigPath ?? "<default>");
+
         if (settings.Fast && settings.Enrich)
         {
             AnsiConsole.MarkupLine("[red]--fast and --enrich are mutually exclusive.[/] Omit both to run a full sync.");
+            log.LogWarning("CLI sync command rejected invalid arguments: both --fast and --enrich were set.");
             return 1;
         }
 
@@ -40,6 +50,7 @@ internal sealed class SyncCommand : AsyncCommand<SyncSettings>
         if (config.Sources.Count == 0)
         {
             AnsiConsole.MarkupLine("[yellow]No sources configured.[/] Run [bold]pr-inbox config init[/] then add sources.");
+            log.LogWarning("CLI sync command aborted: no sources configured.");
             return 1;
         }
 
@@ -52,7 +63,7 @@ internal sealed class SyncCommand : AsyncCommand<SyncSettings>
         var syncRunRepo = new SyncRunRepository(db);
 
         var sourceFactory = new SourceFactory();
-        IReadOnlyList<RuntimeSource> runtimes = sourceFactory.Build(config);
+        IReadOnlyList<RuntimeSource> runtimes = sourceFactory.Build(config, CliLoggerFactory.Instance);
 
         if (settings.SourceId is not null)
         {
@@ -60,18 +71,21 @@ internal sealed class SyncCommand : AsyncCommand<SyncSettings>
             if (runtimes.Count == 0)
             {
                 AnsiConsole.MarkupLine($"[red]No enabled source with id '{Markup.Escape(settings.SourceId)}'.[/]");
+                log.LogWarning("CLI sync command aborted: requested source {SourceId} is not enabled.", settings.SourceId);
                 return 1;
             }
         }
 
         var mode = settings.Fast ? "fast" : settings.Enrich ? "enrich" : "full";
+        log.LogInformation("CLI sync command running {SourceCount} source(s) in {Mode} mode.", runtimes.Count, mode);
         AnsiConsole.MarkupLine($"[bold]Syncing {runtimes.Count} source(s) ({mode})...[/]");
         AnsiConsole.WriteLine();
 
         var results = new List<SyncResult>();
         foreach (var rt in runtimes)
         {
-            var orchestrator = new SyncOrchestrator(rt.Source, prRepo, snapRepo, threadRepo, syncRunRepo);
+            var orchestrator = new SyncOrchestrator(rt.Source, prRepo, snapRepo, threadRepo, syncRunRepo,
+                CliLoggerFactory.Instance.CreateLogger<SyncOrchestrator>());
             await AnsiConsole.Status()
                 .Spinner(Spinner.Known.Dots)
                 .StartAsync($"[cyan]{rt.Source.SourceId}[/]: starting...", async ctx =>
@@ -106,6 +120,12 @@ internal sealed class SyncCommand : AsyncCommand<SyncSettings>
         AnsiConsole.MarkupLine(anyFailed
             ? "[yellow]Sync completed with errors.[/]"
             : "[green]Sync completed.[/]");
+        log.LogInformation(
+            "CLI sync command completed (sources={SourceCount}, failedRuns={FailedRuns}, prsSeen={PrsSeen}, prsFailed={PrsFailed}).",
+            results.Count,
+            results.Count(r => r.Status is Core.Models.SyncRunStatus.Failed),
+            results.Sum(r => r.PrsSeen),
+            results.Sum(r => r.PrsFailed));
         return anyFailed ? 1 : 0;
     }
 }

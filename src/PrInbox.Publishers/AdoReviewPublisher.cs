@@ -57,6 +57,13 @@ public sealed class AdoReviewPublisher : IPrReviewPublisher
 
     public async Task<PublishResult> PublishAsync(PublishRequest request, CancellationToken ct)
     {
+        _log.LogInformation(
+            "ADO publish started (identity={Identity}, url={Url}, dryRun={DryRun}, event={Event}, findings={FindingCount}).",
+            _identityUsed,
+            request.PrUrl,
+            request.DryRun,
+            request.Event,
+            request.Findings.Count);
         if (request.Event != ReviewEvent.Comment)
         {
             return PublishResult.Failure(_identityUsed,
@@ -90,6 +97,8 @@ public sealed class AdoReviewPublisher : IPrReviewPublisher
         // DRY RUN: no network at all.
         if (request.DryRun)
         {
+            _log.LogInformation("ADO publish dry-run planned (identity={Identity}, url={Url}, inline={InlineCount}, bodyOnly={BodyOnlyCount}).",
+                _identityUsed, request.PrUrl, anchorable.Count, nonAnchorable.Count + 1);
             return PublishResult.DryRunPlan(
                 inlineCount: anchorable.Count,
                 bodyOnlyCount: nonAnchorable.Count + 1,  // +1 for the header thread
@@ -115,6 +124,8 @@ public sealed class AdoReviewPublisher : IPrReviewPublisher
         {
             return PublishResult.Failure(_identityUsed, $"Cannot resolve ADO repo id for '{target.Repo}': {ex.Message}");
         }
+        _log.LogDebug("ADO publish resolved repository id (org={Org}, project={Project}, repoName={RepoName}, repoId={RepoId}).",
+            org, project, target.Repo, repoId);
 
         // HEAD check is optional and uses one extra HTTP call.
         var headSha = request.HeadShaAtAuthoring;
@@ -177,6 +188,16 @@ public sealed class AdoReviewPublisher : IPrReviewPublisher
             warnings.Insert(0, $"{anchorable.Count - inlineSuccess} inline finding(s) failed to post; review body still landed.");
         }
 
+        _log.LogInformation(
+            "ADO publish completed (identity={Identity}, url={Url}, headerThreadId={HeaderThreadId}, inlinePosted={InlinePosted}, inlineRequested={InlineRequested}, warnings={WarningCount}, headChanged={HeadChanged}).",
+            _identityUsed,
+            request.PrUrl,
+            headerThreadResult.ThreadId,
+            inlineSuccess,
+            anchorable.Count,
+            warnings.Count,
+            headChanged);
+
         return new PublishResult(
             Posted: true,
             PlatformReviewId: headerThreadResult.ThreadId,
@@ -194,6 +215,8 @@ public sealed class AdoReviewPublisher : IPrReviewPublisher
     private async Task<(bool Posted, string ThreadId, IReadOnlyList<string> Errors)> PostThreadAsync(
         string url, string token, ThreadBody body, CancellationToken ct)
     {
+        _log.LogDebug("ADO thread post started (url={Url}, hasThreadContext={HasThreadContext}, commentCount={CommentCount}).",
+            RedactUrl(url), body.ThreadContext is not null, body.Comments.Length);
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -224,6 +247,7 @@ public sealed class AdoReviewPublisher : IPrReviewPublisher
         try
         {
             var doc = JsonSerializer.Deserialize<ThreadResponse>(respText, JsonOpts);
+            _log.LogDebug("ADO thread post completed (url={Url}, threadId={ThreadId}).", RedactUrl(url), doc?.Id.ToString() ?? "");
             return (true, doc?.Id.ToString() ?? "", Array.Empty<string>());
         }
         catch (JsonException ex)
@@ -276,6 +300,19 @@ public sealed class AdoReviewPublisher : IPrReviewPublisher
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
+
+    private static string RedactUrl(string url)
+    {
+        try
+        {
+            var uri = new Uri(url);
+            return $"{uri.Scheme}://{uri.Host}{uri.AbsolutePath}";
+        }
+        catch
+        {
+            return "<invalid-url>";
+        }
+    }
 
     private sealed class ThreadBody
     {

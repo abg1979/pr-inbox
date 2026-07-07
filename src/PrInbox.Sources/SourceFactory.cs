@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PrInbox.Core.Credentials;
 using PrInbox.Core.Models;
 using PrInbox.Sources.AzureDevOps;
@@ -10,7 +11,7 @@ namespace PrInbox.Sources;
 /// </summary>
 public sealed class SourceFactory
 {
-    public IReadOnlyList<RuntimeSource> Build(PrInboxConfig config)
+    public IReadOnlyList<RuntimeSource> Build(PrInboxConfig config, ILoggerFactory? loggerFactory = null)
     {
         var result = new List<RuntimeSource>();
         var botDetector = new BotDetector(config.Bots.ExtraLogins);
@@ -26,8 +27,10 @@ public sealed class SourceFactory
                         throw new InvalidOperationException(
                             $"Source '{sc.Id}' is kind=github but has no host configured.");
                     }
-                    var tokenProvider = new GhCliTokenProvider(sc.Id, sc.Host, sc.Identity);
-                    var source = new GitHubReadSource(sc.Id, sc.Host, isEnterprise: false, tokenProvider, botDetector);
+                    var tokenProvider = new GhCliTokenProvider(sc.Id, sc.Host, sc.Identity,
+                        loggerFactory?.CreateLogger<GhCliTokenProvider>());
+                    var source = new GitHubReadSource(sc.Id, sc.Host, isEnterprise: false, tokenProvider, botDetector,
+                        loggerFactory?.CreateLogger<GitHubReadSource>());
                     result.Add(new RuntimeSource(source, tokenProvider, sc.Identity));
                     break;
                 }
@@ -38,8 +41,10 @@ public sealed class SourceFactory
                         throw new InvalidOperationException(
                             $"Source '{sc.Id}' is kind=github-enterprise but has no host configured.");
                     }
-                    var tokenProvider = new GhCliTokenProvider(sc.Id, sc.Host, sc.Identity);
-                    var source = new GitHubReadSource(sc.Id, sc.Host, isEnterprise: true, tokenProvider, botDetector);
+                    var tokenProvider = new GhCliTokenProvider(sc.Id, sc.Host, sc.Identity,
+                        loggerFactory?.CreateLogger<GhCliTokenProvider>());
+                    var source = new GitHubReadSource(sc.Id, sc.Host, isEnterprise: true, tokenProvider, botDetector,
+                        loggerFactory?.CreateLogger<GitHubReadSource>());
                     result.Add(new RuntimeSource(source, tokenProvider, sc.Identity));
                     break;
                 }
@@ -62,8 +67,10 @@ public sealed class SourceFactory
                 throw new InvalidOperationException("ADO project entry has empty org or project name.");
             }
             var sourceId = $"ado:{p.Org}/{p.Project}";
-            var tokenProvider = new AzureCliTokenProvider(sourceId);
-            var source = new AzureDevOpsReadSource(sourceId, p.Org, p.Project, tokenProvider, botDetector);
+            var tokenProvider = new AzureCliTokenProvider(sourceId,
+                loggerFactory?.CreateLogger<AzureCliTokenProvider>());
+            var source = new AzureDevOpsReadSource(sourceId, p.Org, p.Project, tokenProvider, botDetector,
+                logger: loggerFactory?.CreateLogger<AzureDevOpsReadSource>());
             // Identity for ADO is a single per-machine az login; we tag it as
             // "azure-cli" rather than calling out to az synchronously at factory
             // time. Per-binding identity disambiguation only matters when the

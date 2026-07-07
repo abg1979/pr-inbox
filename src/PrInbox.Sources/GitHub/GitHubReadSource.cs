@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -144,6 +145,8 @@ public sealed class GitHubReadSource : IPrReadSource
         while (true)
         {
             ct.ThrowIfCancellationRequested();
+            _logger.LogDebug("GitHub search request (sourceId={SourceId}, host={Host}, query={Query}, page={Page}, perPage={PerPage}).",
+                SourceId, _hostname, query, page, perPage);
             var req = new SearchIssuesRequest(query)
             {
                 PerPage = perPage,
@@ -159,6 +162,14 @@ public sealed class GitHubReadSource : IPrReadSource
                 _logger.LogWarning(ex, "GitHub search rate limited at page {Page} for {Query}.", page, query);
                 throw;
             }
+
+            _logger.LogDebug(
+                "GitHub search response (sourceId={SourceId}, query={Query}, page={Page}, items={ItemCount}, total={TotalCount}).",
+                SourceId,
+                query,
+                page,
+                searchResult.Items.Count,
+                searchResult.TotalCount);
 
             foreach (var item in searchResult.Items)
             {
@@ -181,14 +192,23 @@ public sealed class GitHubReadSource : IPrReadSource
 
     public async Task<PrEnrichmentBundle> EnrichAsync(PrIdentity id, CancellationToken ct)
     {
+        _logger.LogInformation("GitHub enrich started (sourceId={SourceId}, host={Host}, url={Url}).", SourceId, _hostname, id.Url);
         var detail = await FetchDetailAsync(id, ct);
         var threads = await FetchThreadsAsync(id, ct);
+        _logger.LogInformation(
+            "GitHub enrich completed (sourceId={SourceId}, url={Url}, commits={CommitCount}, threads={ThreadCount}, files={FileCount}).",
+            SourceId,
+            id.Url,
+            detail.OrderedCommitShas.Count,
+            threads.Count,
+            detail.Files?.Count ?? 0);
         return new PrEnrichmentBundle(detail, threads);
     }
 
     private async Task<RemotePullRequestDetail> FetchDetailAsync(PrIdentity id, CancellationToken ct)
     {
         var (owner, repo, number) = ParseUrl(id.Url);
+        var sw = Stopwatch.StartNew();
         var client = await CreateClientAsync(ct);
 
         var pr = await client.PullRequest.Get(owner, repo, number);
@@ -253,6 +273,15 @@ public sealed class GitHubReadSource : IPrReadSource
                 : pr.Mergeable == false ? "conflicts"
                 : null);
 
+        _logger.LogDebug(
+            "GitHub detail response (sourceId={SourceId}, url={Url}, commits={CommitCount}, files={FileCount}, ciStatus={CiStatus}, elapsedMs={ElapsedMs}).",
+            SourceId,
+            id.Url,
+            orderedShas.Count,
+            files?.Count ?? 0,
+            ciStatus ?? "<null>",
+            sw.ElapsedMilliseconds);
+
         return new RemotePullRequestDetail(
             Identity: id,
             HeadSha: pr.Head.Sha,
@@ -290,6 +319,7 @@ public sealed class GitHubReadSource : IPrReadSource
     private async Task<IReadOnlyList<RemoteThread>> FetchThreadsAsync(PrIdentity id, CancellationToken ct)
     {
         var (owner, repo, number) = ParseUrl(id.Url);
+        var sw = Stopwatch.StartNew();
         var client = await CreateClientAsync(ct);
 
         var result = new List<RemoteThread>();
@@ -382,6 +412,13 @@ public sealed class GitHubReadSource : IPrReadSource
                 AnchorPath: null,
                 AnchorLine: null));
         }
+
+        _logger.LogDebug(
+            "GitHub thread response (sourceId={SourceId}, url={Url}, threadCount={ThreadCount}, elapsedMs={ElapsedMs}).",
+            SourceId,
+            id.Url,
+            result.Count,
+            sw.ElapsedMilliseconds);
 
         return result;
     }
@@ -521,7 +558,7 @@ public sealed class GitHubReadSource : IPrReadSource
         var (owner, repo, number) = ParseUrl(id.Url);
         var client = await CreateClientAsync(ct);
         var commits = await client.PullRequest.Commits(owner, repo, number);
-        return commits
+        var mapped = commits
             .Reverse() // newest-first
             .Select(c => new RemoteCommit(
                 Sha: c.Sha,
@@ -529,6 +566,8 @@ public sealed class GitHubReadSource : IPrReadSource
                 CommittedAt: c.Commit?.Author?.Date ?? DateTimeOffset.UtcNow,
                 Subject: FirstLineOf(c.Commit?.Message ?? string.Empty)))
             .ToList();
+        _logger.LogDebug("GitHub commits response (sourceId={SourceId}, url={Url}, commitCount={CommitCount}).", SourceId, id.Url, mapped.Count);
+        return mapped;
     }
 
     public async Task<CompareResult> CompareAsync(PrIdentity id, string previousHeadSha, string currentHeadSha, CancellationToken ct)
@@ -546,14 +585,24 @@ public sealed class GitHubReadSource : IPrReadSource
             var compare = await client.Repository.Commit.Compare(owner, repo, previousHeadSha, currentHeadSha);
             // status "diverged" indicates the prior SHA is no longer on the line of history.
             var forcePushed = string.Equals(compare.Status, "diverged", StringComparison.OrdinalIgnoreCase);
-            return new CompareResult(
+            var result = new CompareResult(
                 BaseUnreachableFromHead: forcePushed,
                 CommitsAhead: compare.AheadBy,
                 CommitsBehind: compare.BehindBy);
+            _logger.LogDebug(
+                "GitHub compare response (sourceId={SourceId}, url={Url}, forcePushed={ForcePushed}, ahead={Ahead}, behind={Behind}).",
+                SourceId,
+                id.Url,
+                result.BaseUnreachableFromHead,
+                result.CommitsAhead,
+                result.CommitsBehind);
+            return result;
         }
         catch (NotFoundException)
         {
             // Previous SHA is gone entirely — definitive force-push signal.
+            _logger.LogDebug("GitHub compare detected missing base commit (sourceId={SourceId}, url={Url}, previousHead={PreviousHead}).",
+                SourceId, id.Url, previousHeadSha);
             return new CompareResult(BaseUnreachableFromHead: true, CommitsAhead: 0, CommitsBehind: 1);
         }
     }

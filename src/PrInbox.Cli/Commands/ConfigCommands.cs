@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using PrInbox.Core.Config;
 using PrInbox.Core.Credentials;
 using Spectre.Console;
@@ -16,6 +17,9 @@ internal sealed class ConfigDoctorCommand : AsyncCommand<ConfigDoctorSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, ConfigDoctorSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<ConfigDoctorCommand>();
+        log.LogInformation("CLI config doctor started (configPath={ConfigPath}).", settings.ConfigPath ?? "<default>");
+
         var config = await PrInboxConfig.LoadAsync(settings.ConfigPath);
 
         AnsiConsole.MarkupLine("[bold]pr-inbox config doctor[/]");
@@ -73,6 +77,7 @@ internal sealed class ConfigDoctorCommand : AsyncCommand<ConfigDoctorSettings>
             }
         }
 
+        log.LogInformation("CLI config doctor completed (sourceCount={SourceCount}, allOk={AllOk}).", config.Sources.Count, allOk);
         return allOk ? 0 : 1;
     }
 }
@@ -87,11 +92,13 @@ internal sealed class ConfigInitCommand : AsyncCommand<ConfigInitSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, ConfigInitSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<ConfigInitCommand>();
         var path = settings.ConfigPath ?? PrInboxConfig.DefaultPath;
         if (File.Exists(path))
         {
             AnsiConsole.MarkupLine($"[yellow]Config already exists at {Markup.Escape(path)}.[/]");
             AnsiConsole.MarkupLine("Edit it directly, or use the [bold]config add-source[/] commands.");
+            log.LogInformation("CLI config init skipped: config already exists at {Path}.", path);
             return 0;
         }
 
@@ -114,6 +121,7 @@ internal sealed class ConfigInitCommand : AsyncCommand<ConfigInitSettings>
         await seed.SaveAsync(path);
         AnsiConsole.MarkupLine($"[green]Initialized config[/] at [cyan]{Markup.Escape(path)}[/]");
         AnsiConsole.MarkupLine("[grey]Edit to add more sources or run [bold]pr-inbox config doctor[/] to verify auth.[/]");
+        log.LogInformation("CLI config init created config at {Path}.", path);
         return 0;
     }
 }
@@ -139,6 +147,7 @@ internal sealed class AddSourceCommand : AsyncCommand<AddSourceSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, AddSourceSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<AddSourceCommand>();
         var config = await PrInboxConfig.LoadAsync(settings.ConfigPath);
         var kind = settings.Kind.ToLowerInvariant() switch
         {
@@ -159,6 +168,7 @@ internal sealed class AddSourceCommand : AsyncCommand<AddSourceSettings>
         if (config.Sources.Any(s => s.Id == id))
         {
             AnsiConsole.MarkupLine($"[yellow]Source '{Markup.Escape(id)}' already exists.[/]");
+            log.LogInformation("CLI add-source skipped: source {SourceId} already exists.", id);
             return 0;
         }
 
@@ -173,6 +183,7 @@ internal sealed class AddSourceCommand : AsyncCommand<AddSourceSettings>
 
         await config.SaveAsync(settings.ConfigPath);
         AnsiConsole.MarkupLine($"[green]Added source[/] [cyan]{Markup.Escape(id)}[/] ({kind})");
+        log.LogInformation("CLI add-source completed (sourceId={SourceId}, kind={Kind}, hostOrOrg={HostOrOrg}).", id, kind, settings.HostOrOrg);
         return 0;
     }
 }
@@ -193,15 +204,18 @@ internal sealed class AddAdoProjectCommand : AsyncCommand<AddAdoProjectSettings>
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, AddAdoProjectSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<AddAdoProjectCommand>();
         var config = await PrInboxConfig.LoadAsync(settings.ConfigPath);
         if (config.Ado.Projects.Any(p => p.Org == settings.Org && p.Project == settings.Project))
         {
             AnsiConsole.MarkupLine("[yellow]Already configured.[/]");
+            log.LogInformation("CLI add-ado-project skipped: {Org}/{Project} already configured.", settings.Org, settings.Project);
             return 0;
         }
         config.Ado.Projects.Add(new AdoProjectConfig { Org = settings.Org, Project = settings.Project });
         await config.SaveAsync(settings.ConfigPath);
         AnsiConsole.MarkupLine($"[green]Added ADO project[/] [cyan]{Markup.Escape(settings.Org)}/{Markup.Escape(settings.Project)}[/]");
+        log.LogInformation("CLI add-ado-project completed ({Org}/{Project}).", settings.Org, settings.Project);
         return 0;
     }
 }
@@ -240,10 +254,12 @@ internal sealed class SetPlatformLauncherCommand : AsyncCommand<SetPlatformLaunc
 {
     protected override async Task<int> ExecuteAsync(CommandContext context, SetPlatformLauncherSettings settings, CancellationToken cancellationToken)
     {
+        var log = CliLoggerFactory.Instance.CreateLogger<SetPlatformLauncherCommand>();
         if (!PlatformKindDetector.TryParse(settings.Platform, out var platform))
         {
             AnsiConsole.MarkupLine($"[red]Invalid platform:[/] {Markup.Escape(settings.Platform)}");
             AnsiConsole.MarkupLine("[grey]Expected: windows | macos | linux[/]");
+            log.LogWarning("CLI set-platform-launcher rejected invalid platform {Platform}.", settings.Platform);
             return 1;
         }
 
@@ -257,12 +273,14 @@ internal sealed class SetPlatformLauncherCommand : AsyncCommand<SetPlatformLaunc
         if (update is { LaunchCommand: null, TerminalProgram: null, TerminalArgsTemplate: null, TerminalRawCommand: null, KeepTerminalOpen: null })
         {
             AnsiConsole.MarkupLine("[yellow]No platform launcher fields specified.[/]");
+            log.LogWarning("CLI set-platform-launcher rejected request with no update fields for platform {Platform}.", platform);
             return 1;
         }
 
         var svc = new PrInbox.Core.Config.ConfigService(configPath: settings.ConfigPath);
         await svc.SetPlatformLauncherOverrideAsync(platform, update, cancellationToken);
         AnsiConsole.MarkupLine($"[green]Updated platform launcher[/] for [cyan]{platform}[/].");
+        log.LogInformation("CLI set-platform-launcher completed for {Platform}.", platform);
         return 0;
     }
 }

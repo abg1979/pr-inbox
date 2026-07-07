@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -138,6 +139,9 @@ internal sealed class AdoApiClient
 
         for (var attempt = 0; attempt < 3; attempt++)
         {
+            var sw = Stopwatch.StartNew();
+            _logger.LogDebug("ADO request started (org={Org}, type={Type}, attempt={Attempt}, url={Url}).",
+                _org, typeof(T).Name, attempt + 1, RedactUrl(url));
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -156,6 +160,8 @@ internal sealed class AdoApiClient
 
             using (response)
             {
+                _logger.LogDebug("ADO response received (org={Org}, type={Type}, attempt={Attempt}, status={StatusCode}, elapsedMs={ElapsedMs}, url={Url}).",
+                    _org, typeof(T).Name, attempt + 1, (int)response.StatusCode, sw.ElapsedMilliseconds, RedactUrl(url));
                 if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable && attempt < 2)
                 {
                     var delay = TimeSpan.FromSeconds(1 << attempt);
@@ -167,12 +173,22 @@ internal sealed class AdoApiClient
                 if (!response.IsSuccessStatusCode)
                 {
                     var body = await response.Content.ReadAsStringAsync(ct);
+                    _logger.LogWarning(
+                        "ADO response failed (org={Org}, type={Type}, status={StatusCode}, elapsedMs={ElapsedMs}, url={Url}, bodyExcerpt={BodyExcerpt}).",
+                        _org,
+                        typeof(T).Name,
+                        (int)response.StatusCode,
+                        sw.ElapsedMilliseconds,
+                        RedactUrl(url),
+                        Truncate(body, 200));
                     throw new AdoApiException($"ADO GET {url} -> {(int)response.StatusCode}: {Truncate(body, 500)}", response.StatusCode);
                 }
 
                 await using var stream = await response.Content.ReadAsStreamAsync(ct);
                 var dto = await JsonSerializer.DeserializeAsync<T>(stream, SerializerOptions, ct)
                           ?? throw new AdoApiException($"ADO GET {url}: empty response body.", HttpStatusCode.OK);
+                _logger.LogDebug("ADO response parsed (org={Org}, type={Type}, elapsedMs={ElapsedMs}, url={Url}).",
+                    _org, typeof(T).Name, sw.ElapsedMilliseconds, RedactUrl(url));
                 return dto;
             }
         }
@@ -188,6 +204,19 @@ internal sealed class AdoApiClient
 
     private static string Truncate(string s, int max) =>
         string.IsNullOrEmpty(s) ? "(empty)" : (s.Length <= max ? s : s[..max] + "...");
+
+    private static string RedactUrl(string url)
+    {
+        try
+        {
+            var uri = new Uri(url);
+            return $"{uri.Scheme}://{uri.Host}{uri.AbsolutePath}";
+        }
+        catch
+        {
+            return "<invalid-url>";
+        }
+    }
 }
 
 internal sealed class AdoApiException : Exception

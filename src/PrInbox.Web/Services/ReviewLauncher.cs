@@ -54,6 +54,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
 
     public async Task<string> LaunchAsync(string prUrl, CancellationToken ct)
     {
+        _log.LogInformation("Review launch requested for {Url}.", prUrl);
         var (prRepo, snapRepo, threadRepo, reviewRepo) = OpenRepos();
         var briefService = new BriefService(prRepo, snapRepo, threadRepo, reviewRepo);
 
@@ -64,8 +65,11 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         }
         catch (BriefCreationException ex)
         {
+            _log.LogWarning("Review launch failed to create brief for {Url}: {Message}", prUrl, ex.Message);
             return ex.Message;
         }
+        _log.LogInformation("Review brief created (runId={RunId}, runDir={RunDir}, headSha={HeadSha}).",
+            brief.RunId, brief.RunDirectory, brief.HeadSha);
 
         // Build a "<repo> #<number> @<short-sha> <HH:mm>" title for the wt
         // tab and the underlying agent's session name. Including the short
@@ -93,6 +97,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
 
         StartWatcher(brief.PrUrl, brief.RunDirectory, brief.RunId, brief.HeadSha);
         SpawnConsole(brief.RunDirectory, tabTitle, brief.RunId);
+        _log.LogInformation("Review launch completed for {Url} (runId={RunId}).", brief.PrUrl, brief.RunId);
 
         return $"Review run #{brief.RunId} opened in a new window. Findings will land in {Path.Combine(brief.RunDirectory, "findings.yaml")}.";
     }
@@ -280,6 +285,8 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
             Findings: null,
             FindingsErrors: Array.Empty<string>());
         _runs.StartedRun(run);
+        _log.LogDebug("Review watcher starting (url={Url}, runId={RunId}, runDir={RunDir}, headSha={HeadSha}).",
+            prUrl, runId, runDir, headSha);
 
         var watcher = new FindingsWatcher(prUrl, runDir, _runs, _logFactory.CreateLogger<FindingsWatcher>());
         // Dispose any previous watcher for the same PR before replacing.
@@ -288,6 +295,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
             try { old.Dispose(); } catch { }
         }
         _watchers[prUrl] = watcher;
+        _log.LogDebug("Review watcher active (url={Url}, runId={RunId}).", prUrl, runId);
     }
 
     private void SpawnConsole(string runDir, string tabTitle, long runId)
@@ -296,6 +304,12 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         var pluginDir = FindPluginDir();
         var resolved = rl.ResolveForCurrentPlatform(pluginDir);
         var launchCommand = BuildReviewCommand(resolved.LaunchCommand, rl.AutoSend, rl.Yolo);
+        _log.LogInformation(
+            "Spawning review console (runId={RunId}, platform={Platform}, runDir={RunDir}, tabPerReview={TabPerReview}).",
+            runId,
+            resolved.Platform,
+            runDir,
+            rl.TabPerReview);
 
         var humanTitle = SanitizeForShellTitle(tabTitle);
         var token = ConsoleWindowRegistry.TokenFor(runId);
@@ -318,6 +332,8 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
                 _log.LogError("Failed to spawn review console for {RunDir}; launcher configuration is invalid.", runDir);
                 return;
             }
+
+            _log.LogDebug("Review console process launch dispatched (runId={RunId}, platform={Platform}).", runId, resolved.Platform);
 
             if (OperatingSystem.IsWindows() && !rl.TabPerReview)
             {
@@ -431,13 +447,14 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         }
 
         // Default macOS host: Terminal.app via AppleScript.
+        // Use ArgumentList (not Arguments) so the script is passed as a single
+        // raw argument — no shell quoting layer that would misparse the literal
+        // double quotes that are part of the AppleScript string syntax.
         var script = $"tell application \"Terminal\" to do script \"cd {EscapeForAppleScriptSingleQuotedPath(runDir)}; {EscapeForAppleScript(command)}\"";
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "osascript",
-            Arguments = $"-e \"{script}\"",
-            UseShellExecute = false,
-        });
+        var psi = new ProcessStartInfo { FileName = "osascript", UseShellExecute = false };
+        psi.ArgumentList.Add("-e");
+        psi.ArgumentList.Add(script);
+        Process.Start(psi);
         return true;
     }
 
