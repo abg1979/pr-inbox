@@ -332,6 +332,24 @@ public sealed class ReviewLauncherSettings
     public bool TabPerReview { get; set; } = false;
 
     /// <summary>
+    /// When true, instructs the review agent to create a GitHub
+    /// <em>draft</em> (pending) review — findings are posted as inline
+    /// comments but the review is <b>not submitted</b> and remains
+    /// invisible to other contributors until the reviewer manually submits
+    /// it via the GitHub UI or API. Default <c>true</c>: reviews are saved
+    /// as drafts for human inspection before publishing. Set to
+    /// <c>false</c> to submit reviews immediately. The flag is propagated
+    /// to the run's <c>posting-style.md</c> sidecar at brief-creation time
+    /// so the agent picks it up without any changes to the launch command.
+    /// </summary>
+    /// <remarks>
+    /// Mutable (<c>set</c> not <c>init</c>) so the Settings page can toggle
+    /// it on the live DI singleton and the next review launch picks it up
+    /// without a process restart.
+    /// </remarks>
+    public bool PostAsPending { get; set; } = true;
+
+    /// <summary>
     /// Computes the effective launcher settings for the current platform:
     /// common defaults first, then platform-specific overrides.
     /// </summary>

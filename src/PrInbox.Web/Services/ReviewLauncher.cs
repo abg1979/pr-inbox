@@ -61,7 +61,8 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         BriefResult brief;
         try
         {
-            brief = await briefService.CreateBriefAsync(prUrl, ct);
+            brief = await briefService.CreateBriefAsync(prUrl, ct,
+                postAsPending: _config.ReviewLauncher.PostAsPending);
         }
         catch (BriefCreationException ex)
         {

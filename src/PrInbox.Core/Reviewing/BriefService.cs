@@ -78,7 +78,8 @@ public sealed class BriefService
         _reviewRepo = reviewRepo;
     }
 
-    public async Task<BriefResult> CreateBriefAsync(string prUrl, CancellationToken ct)
+    public async Task<BriefResult> CreateBriefAsync(string prUrl, CancellationToken ct,
+        bool postAsPending = false)
     {
         if (!PrUrl.TryCanonicalize(prUrl, out var canonical))
         {
@@ -130,6 +131,15 @@ public sealed class BriefService
                 Path.Combine(runDir, "findings.schema.json"), ct);
             await CopyEmbeddedResourceAsync("posting-style.md",
                 Path.Combine(runDir, "posting-style.md"), ct);
+            if (postAsPending)
+            {
+                await File.AppendAllTextAsync(
+                    Path.Combine(runDir, "posting-style.md"),
+                    "\n\n## Review submission\n\nPost as a **PENDING draft** (`event: PENDING`). " +
+                    "Do not submit the review — leave it as a draft for the human reviewer to " +
+                    "inspect and publish manually via the GitHub UI.\n",
+                    ct);
+            }
         }
         catch (IOException)
         {

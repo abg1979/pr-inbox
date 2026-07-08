@@ -501,6 +501,21 @@ else
                 </span>
             </label>
         </div>
+        <div class="settings-toggle">
+            <label>
+                <input type="checkbox"
+                       checked="@_postAsPending"
+                       @onchange="@(e => OnPostAsPendingChanged((bool)e.Value!))"
+                       disabled="@_busy" />
+                <strong>Post as draft review</strong>
+                <span class="muted">
+                    On (default): the review agent saves findings as a GitHub <em>draft</em> review — comments
+                    are anchored to the diff but the review is not submitted and remains invisible to
+                    other contributors until you publish it manually via the GitHub UI.
+                    Off: review is submitted immediately and visible to all collaborators.
+                </span>
+            </label>
+        </div>
     </section>
 
     <p class="muted">
@@ -516,6 +531,7 @@ else
     private bool _autoSend = true;
     private bool _yolo;
     private bool _tabPerReview;
+    private bool _postAsPending;
     private string _tabColor = string.Empty;
     private string _launchCommand = string.Empty;
     private static readonly PlatformKind CurrentPlatform = PlatformKindDetector.Current;
@@ -635,6 +651,7 @@ else
         _autoSend = _cfg.ReviewLauncher.AutoSend;
         _yolo = _cfg.ReviewLauncher.Yolo;
         _tabPerReview = _cfg.ReviewLauncher.TabPerReview;
+        _postAsPending = _cfg.ReviewLauncher.PostAsPending;
         _tabColor = _cfg.ReviewLauncher.TabColor;
         _launchCommand = _cfg.ReviewLauncher.LaunchCommand;
         LoadPlatformEditor(_editingPlatform);
@@ -1071,6 +1088,16 @@ else
         {
             await ConfigSvc.SetReviewLauncherTabPerReviewAsync(_tabPerReview);
             SetMessage($"One tab per review {(value ? "ON" : "OFF")}.");
+        });
+    }
+
+    private Task OnPostAsPendingChanged(bool value)
+    {
+        _postAsPending = value;
+        return WrapAsync(async () =>
+        {
+            await ConfigSvc.SetReviewLauncherPostAsPendingAsync(_postAsPending);
+            SetMessage($"Post as draft review {(value ? "ON" : "OFF")}.");
         });
     }
 

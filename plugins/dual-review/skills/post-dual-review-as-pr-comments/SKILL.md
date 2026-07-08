@@ -5,7 +5,9 @@ description: >-
   with suggestion blocks where the fix is mechanical. Verifies every
   finding's file:line resolves to a diff-hunk anchor; reroutes
   non-anchorable findings to the review body. Chooses the review
-  event from the verdict.
+  event from the verdict. Supports PENDING event to create a draft
+  review (comments saved but not submitted) for human inspection
+  before publishing.
 metadata:
   author: pr-inbox maintainers
   version: "0.1.0"
@@ -15,6 +17,7 @@ metadata:
     - "dual-model-review verdict needs to be delivered as PR comments"
     - "Operator: 'post the review on the PR'"
     - "Caller agent has a CRITICALS_FOUND / FINDINGS_FOUND / CONVERGED verdict"
+    - "Operator: 'save as draft review' or 'don't submit the review yet'"
 ---
 
 # Post Dual-Review as PR Comments
@@ -64,7 +67,7 @@ PR.
 |---|---|
 | `pr_ref` | PR identity. One of: `owner/repo#N`, full URL, or `(owner, repo, number)` triple. |
 | `verdict` | The structured `dual-model-review` output (the YAML object from §6 of that agent). The skill reads `verdict.run_id`, `verdict.round`, `verdict.head_sha`, `verdict.base_sha` (optional), and `verdict.verdict` as load-bearing fields. `verdict.run_id` is **required and shape-validated**: Step 0 refuses with `malformed_verdict` if absent, empty, whitespace-only, longer than 128 chars, or contains any character outside the allowlist `[A-Za-z0-9_.:-]` (UUID v4 / ULID / dotted-composite compatible). The allowlist is mechanically necessary because Step 5 interpolates `run_id` raw into an HTML-comment dedup marker; a producer-controlled `-->` would otherwise escape the marker and inject Markdown into the review body. `verdict.round` must be a non-negative integer (same marker-escape rationale). `verdict.head_sha` must be exactly 40 lowercase hex chars; Step 1 compares it against the live PR head and refuses with `stale_verdict` on mismatch (force-push detection). `verdict.base_sha` is optional; if present it must also be 40 lowercase hex chars, and Step 1 refuses with `stale_verdict_base` on mismatch (base-advance detection). `verdict.verdict` must be one of the §6 enum literals (`CONVERGED`, `CRITICALS_FOUND`, `DISAGREEMENT`, `FINDINGS_FOUND`, `INCOMPLETE`); a typo or out-of-enum value is `malformed_verdict`. Step 0 also enforces verdict↔buckets cross-field consistency (e.g. `CRITICALS_FOUND` requires ≥1 high/critical finding in `agreed_findings ∪ unique_to_a ∪ unique_to_b ∪ disagreements`). (Earlier drafts allowed an "older producer fallback" that disabled idempotency or accepted any non-empty string; both paths were removed.) |
-| `event` | Optional override of the review event. Default: derived from `verdict.verdict` per the table below. **Cannot override** an `INCOMPLETE` verdict to a posting event — see §Escalation. |
+| `event` | Optional override of the review event. Default: derived from `verdict.verdict` per the table below. Accepted values: `REQUEST_CHANGES`, `COMMENT`, `APPROVE`, `PENDING`. **Cannot override** an `INCOMPLETE` verdict to a posting event — see §Escalation. |
 | `body_preamble` | Optional text prepended to the auto-generated summary body. |
 | `auth` | Caller-provided GitHub auth (typically `gh` CLI session). The skill uses `gh api`. |
 
@@ -84,6 +87,28 @@ or the prior-findings sanitization refused, and posting a public
 review action against partial / zero reviewer data would deceive
 maintainers about what actually ran. The default is otherwise a
 recommendation, not a policy.
+
+**`PENDING` event.** When the caller passes `event: PENDING`, the
+skill creates a [GitHub draft review](https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request)
+— all inline comments and the review body are saved against the PR
+but the review is **not submitted** and is **not visible to other
+contributors** until the reviewer manually submits it via the GitHub
+UI or API. Use this when you want a human to inspect and curate the
+findings before they become visible on the PR.
+
+Behaviour differences under `PENDING`:
+
+- The review body still contains the run-id dedup marker (idempotency
+  is preserved — a retry finds the draft and reports `already_posted`).
+- The result object gains `pending: true` and omits `review_url`
+  (draft reviews do not have a public URL until submitted).
+- The signal-capture event is emitted with `event=PENDING` so the
+  telemetry accurately reflects that no visible GitHub activity
+  occurred yet.
+- All staleness guards (Step 1 and Step 5 recheck) apply normally.
+  `PENDING` does not loosen the stale-head or PR-closed checks —
+  a draft anchored to a force-pushed commit is just as wrong as a
+  submitted one.
 
 ## Procedure
 
@@ -682,13 +707,14 @@ gh api -X POST /repos/{owner}/{repo}/pulls/{N}/reviews --input payload.json
 ```yaml
 posted: true
 review_id: <int>
-review_url: <url>
+review_url: <url>      # omitted when event=PENDING (draft has no public URL yet)
+pending: false | true  # true iff event=PENDING; false (or absent) otherwise
 inline_comments: <int>
 promoted_to_body: <int>     # findings whose anchor wasn't in a hunk
 dropped_inline: <int>       # findings demoted by Step 5 quota cap
 suggestion_blocks: <int>
 encoding_repaired: false | true
-event: REQUEST_CHANGES | COMMENT | APPROVE
+event: REQUEST_CHANGES | COMMENT | APPROVE | PENDING
 ```
 
 ## Edge Cases
@@ -778,7 +804,7 @@ Emit one ALAS execution signal per run with:
 - Outcome: `completed` (review posted), `partial` (posted but some
   findings dropped or encoding repaired), `failed` (post failed).
 - Notes: compact key=value summary including
-  `inline=N promoted=N suggestions=N encoding_repaired=<bool> event=<event>`.
+  `inline=N promoted=N suggestions=N encoding_repaired=<bool> event=<event> pending=<bool>`.
 - Self-assessment (5-key, aligned with skill template):
   - `accuracy` (1-5): do the inline anchors land on the lines the
     findings actually concern, and do `suggestion` blocks compile/
@@ -835,6 +861,8 @@ Refuse and surface to caller (do not retry blindly) when:
   Surface the failing finding and the API response.
 - `event: APPROVE` is requested but the verdict had any non-empty
   finding bucket — refuse and ask the caller to confirm.
+- `event: PENDING` is requested alongside `event: APPROVE` — these
+  are mutually exclusive; refuse with `reason: conflicting_event`.
 - `event` and `verdict.verdict` disagree in a direction that lowers
   signal (e.g. caller forces `APPROVE` on `CRITICALS_FOUND`) — warn
   and require explicit override flag.

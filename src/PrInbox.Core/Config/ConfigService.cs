@@ -293,6 +293,14 @@ public sealed class ConfigService : IConfigService
     }
 
     /// <inheritdoc />
+    public async Task SetReviewLauncherPostAsPendingAsync(bool postAsPending, CancellationToken ct = default)
+    {
+        var cfg = await PrInboxConfig.LoadAsync(_configPath, ct);
+        cfg.ReviewLauncher.PostAsPending = postAsPending;
+        await SaveAndRefreshAsync(cfg, ct);
+    }
+
+    /// <inheritdoc />
     public async Task<BindIdentityResult> BindGitHubSourceToIdentityAsync(
         string sourceId,
         string identity,

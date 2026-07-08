@@ -129,6 +129,16 @@ public interface IConfigService
     Task SetReviewLauncherTabPerReviewAsync(bool tabPerReview, CancellationToken ct = default);
 
     /// <summary>
+    /// Sets the "post as pending draft" launcher flag
+    /// (<see cref="ReviewLauncherSettings.PostAsPending"/>) and mirrors it
+    /// onto the DI singleton so the next review launch picks it up without a
+    /// process restart. When on, the review agent creates a GitHub draft
+    /// review (findings saved but not submitted / visible) instead of
+    /// immediately submitting.
+    /// </summary>
+    Task SetReviewLauncherPostAsPendingAsync(bool postAsPending, CancellationToken ct = default);
+
+    /// <summary>
     /// Replaces the entire <see cref="PrInboxConfig.RepoPathFilters"/> map
     /// (monorepo path scoping) and mirrors it onto the DI singleton so the
     /// inbox picks it up without a restart. Repos with an empty pattern
