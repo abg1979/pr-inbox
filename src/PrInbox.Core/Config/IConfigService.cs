@@ -100,6 +100,15 @@ public interface IConfigService
     Task SetReviewLauncherCommandAsync(string launchCommand, CancellationToken ct = default);
 
     /// <summary>
+    /// Sets the Review-launcher model
+    /// (<see cref="ReviewLauncherSettings.Model"/>) and mirrors it onto
+    /// the DI singleton so the next review launch picks it up without a
+    /// process restart. A blank value restores the default
+    /// (<c>claude-opus-4.8</c>).
+    /// </summary>
+    Task SetReviewLauncherModelAsync(string model, CancellationToken ct = default);
+
+    /// <summary>
     /// Sets platform-specific launcher overrides merged on top of common
     /// review-launch defaults at runtime.
     /// </summary>

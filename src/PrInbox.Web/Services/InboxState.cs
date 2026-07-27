@@ -216,6 +216,7 @@ public sealed class InboxState
     private readonly Dictionary<string, InboxRow> _rows = new(StringComparer.OrdinalIgnoreCase);
     private DateTimeOffset? _lastSyncUtc;
     private string? _lastSyncMessage;
+    private string? _currentSyncActivity;
 
     /// <summary>Raised whenever rows change or a sync milestone occurs.</summary>
     public event Action? Changed;
@@ -243,6 +244,15 @@ public sealed class InboxState
         get { lock (_lock) return _lastSyncMessage; }
     }
 
+    /// <summary>
+    /// Live in-flight sync activity label (for example:
+    /// "Syncing #123 org/repo · gh.com:emu"). Null when idle.
+    /// </summary>
+    public string? CurrentSyncActivity
+    {
+        get { lock (_lock) return _currentSyncActivity; }
+    }
+
     public void ReplaceAll(IEnumerable<InboxRow> rows)
     {
         lock (_lock)
@@ -268,6 +278,15 @@ public sealed class InboxState
         {
             _lastSyncUtc = DateTimeOffset.UtcNow;
             _lastSyncMessage = message;
+        }
+        RaiseChanged();
+    }
+
+    public void NoteSyncActivity(string? activity)
+    {
+        lock (_lock)
+        {
+            _currentSyncActivity = activity;
         }
         RaiseChanged();
     }

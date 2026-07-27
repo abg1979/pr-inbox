@@ -212,6 +212,27 @@ button.refresh {
 button.refresh:hover:not([disabled]) { background: rgba(93,164,255,0.12); }
 button.refresh[disabled] { opacity: 0.5; cursor: default; }
 
+.sync-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+.sync-indicator::before {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: var(--accent);
+    animation: sync-pulse 1.2s ease-in-out infinite;
+}
+@keyframes sync-pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+}
+
 .show-closed {
     display: inline-flex;
     align-items: center;

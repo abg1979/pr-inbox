@@ -211,6 +211,16 @@ public sealed class ConfigService : IConfigService
         await SaveAndRefreshAsync(cfg, ct);
     }
 
+    public async Task SetReviewLauncherModelAsync(string model, CancellationToken ct = default)
+    {
+        var cfg = await PrInboxConfig.LoadAsync(_configPath, ct);
+        var trimmed = model?.Trim();
+        cfg.ReviewLauncher.Model = string.IsNullOrEmpty(trimmed)
+            ? new ReviewLauncherSettings().Model   // empty restores the default
+            : trimmed;
+        await SaveAndRefreshAsync(cfg, ct);
+    }
+
     /// <inheritdoc />
     public async Task SetPlatformLauncherOverrideAsync(
         PlatformKind platform,

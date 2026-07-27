@@ -68,6 +68,7 @@ public sealed class InboxSyncHostedService : BackgroundService
             _syncing = true;
             _log.LogInformation("Manual sync trigger accepted.");
             _state.NoteSync("Manual refresh started...");
+            _state.NoteSyncActivity("Manual refresh queued…");
             await RunSyncIterationAsync(ct);
             _log.LogInformation("Manual sync trigger completed.");
             return true;
@@ -75,6 +76,7 @@ public sealed class InboxSyncHostedService : BackgroundService
         finally
         {
             _syncing = false;
+            _state.NoteSyncActivity(null);
             _syncGate.Release();
         }
     }
@@ -124,11 +126,14 @@ public sealed class InboxSyncHostedService : BackgroundService
         try
         {
             _syncing = true;
+            _state.NoteSync("Background sync started...");
+            _state.NoteSyncActivity("Background sync queued…");
             await RunSyncIterationAsync(ct);
         }
         finally
         {
             _syncing = false;
+            _state.NoteSyncActivity(null);
             _syncGate.Release();
         }
     }
@@ -237,7 +242,15 @@ public sealed class InboxSyncHostedService : BackgroundService
         // handle shutdown — we don't count a shutdown cancel as a source
         // failure.
         var tasks = runtimes.Select(rt =>
-            RunOneFastAsync(rt, prRepo, snapRepo, threadRepo, syncRunRepo, _log, ct));
+            RunOneFastAsync(
+                rt,
+                prRepo,
+                snapRepo,
+                threadRepo,
+                syncRunRepo,
+                new Progress<SyncProgress>(p => _state.NoteSyncActivity(FormatSyncActivity(p))),
+                _log,
+                ct));
         var results = await Task.WhenAll(tasks);
         return results.Sum();
     }
@@ -256,6 +269,7 @@ public sealed class InboxSyncHostedService : BackgroundService
         PrSnapshotRepository snapRepo,
         ObservedThreadRepository threadRepo,
         SyncRunRepository syncRunRepo,
+        IProgress<SyncProgress>? progress,
         ILogger log,
         CancellationToken ct)
     {
@@ -263,7 +277,6 @@ public sealed class InboxSyncHostedService : BackgroundService
         {
             log.LogDebug("Fast sync started for source {SourceId} (identity={Identity}).", rt.Source.SourceId, rt.Identity);
             var orchestrator = new SyncOrchestrator(rt.Source, prRepo, snapRepo, threadRepo, syncRunRepo);
-            var progress = new Progress<SyncProgress>();
             var result = await orchestrator.RunFastAsync(rt.Identity, progress, ct);
 
             // Sweep A: anything we still think is open but the source
@@ -399,7 +412,7 @@ public sealed class InboxSyncHostedService : BackgroundService
             if (visible.Count == 0) continue;
             try
             {
-                var progress = new Progress<SyncProgress>();
+                var progress = new Progress<SyncProgress>(p => _state.NoteSyncActivity(FormatSyncActivity(p)));
                 await orch.RunEnrichAsync(
                     rt.Identity, progress, ct,
                     precomputedCandidates: visible,
@@ -449,7 +462,7 @@ public sealed class InboxSyncHostedService : BackgroundService
             if (hidden.Count == 0) continue;
             try
             {
-                var progress = new Progress<SyncProgress>();
+                var progress = new Progress<SyncProgress>(p => _state.NoteSyncActivity(FormatSyncActivity(p)));
                 await orch.RunEnrichAsync(
                     rt.Identity, progress, ct,
                     precomputedCandidates: hidden,
@@ -595,6 +608,14 @@ public sealed class InboxSyncHostedService : BackgroundService
         {
             return (0, 0, 0);
         }
+    }
+
+    private static string FormatSyncActivity(SyncProgress progress)
+    {
+        var message = string.IsNullOrWhiteSpace(progress.Message)
+            ? "Syncing…"
+            : progress.Message.Trim();
+        return $"Syncing {message} · {progress.SourceId}";
     }
 
     private static (PullRequestRepository prRepo, ObservedThreadRepository threadRepo) OpenRepos()

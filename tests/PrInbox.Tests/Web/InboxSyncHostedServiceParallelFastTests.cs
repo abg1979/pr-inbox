@@ -58,7 +58,7 @@ public class InboxSyncHostedServiceParallelFastTests : IAsyncLifetime
         var rt = new RuntimeSource(source, new StubTokenProvider(source.SourceId), "jmprieur_microsoft");
 
         var result = await InboxSyncHostedService.RunOneFastAsync(
-            rt, _prs, _snaps, _threads, _syncRuns, NullLogger.Instance, CancellationToken.None);
+            rt, _prs, _snaps, _threads, _syncRuns, progress: null, NullLogger.Instance, CancellationToken.None);
 
         result.Should().Be(0);
         var rows = await _prs.ListAllAsync(CancellationToken.None);
@@ -75,7 +75,7 @@ public class InboxSyncHostedServiceParallelFastTests : IAsyncLifetime
         var rt = new RuntimeSource(source, new StubTokenProvider(source.SourceId), "jmprieur");
 
         var result = await InboxSyncHostedService.RunOneFastAsync(
-            rt, _prs, _snaps, _threads, _syncRuns, NullLogger.Instance, CancellationToken.None);
+            rt, _prs, _snaps, _threads, _syncRuns, progress: null, NullLogger.Instance, CancellationToken.None);
 
         // Throwing source -> fast pass status Failed -> tally += 1, but the
         // call itself must NOT propagate. Failure isolation is the whole

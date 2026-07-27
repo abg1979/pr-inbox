@@ -27,7 +27,11 @@
 <div class="toolbar">
     <span class="muted">@RowCountLabel</span>
     <span class="muted">@LastSyncLabel</span>
-    <button class="refresh" @onclick="OnRefreshAsync" disabled="@_refreshing">
+    @if (IsSyncing)
+    {
+        <span class="sync-indicator" role="status" aria-live="polite">@SyncIndicatorLabel</span>
+    }
+    <button class="refresh" @onclick="OnRefreshAsync" disabled="@IsSyncing">
         @(_refreshing ? "Refreshing..." : "Refresh")
     </button>
 
@@ -733,6 +737,8 @@ else
     }
 
     private string LastSyncLabel => State.LastSyncMessage ?? "Loading...";
+    private bool IsSyncing => _refreshing || Sync.IsSyncing;
+    private string SyncIndicatorLabel => State.CurrentSyncActivity ?? "Sync in progress…";
 
     private bool IsSourceEnabled(string sourceClass) => _enabledSources.Contains(sourceClass);
 

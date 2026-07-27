@@ -378,6 +378,21 @@ else
         </div>
         <div class="settings-toggle">
             <label>
+                <strong>Model</strong>
+                <span class="muted">
+                    The AI model substituted into the <code>{model}</code> placeholder of the launch command.
+                    Examples: <code>claude-opus-4.8</code>, <code>gpt-5.6-sol</code>, <code>claude-sonnet-4.5</code>.
+                </span>
+                <input type="text"
+                       value="@_model"
+                       @onchange="OnModelChanged"
+                       placeholder="claude-opus-4.8"
+                       disabled="@_busy"
+                       style="grid-column: 1 / -1; width: 100%; margin-top: .35rem;" />
+            </label>
+        </div>
+        <div class="settings-toggle">
+            <label>
                 <strong>Platform launcher override (@CurrentPlatformLabel)</strong>
                 <span class="muted">
                     Optional per-platform override merged on top of the common launch command.
@@ -534,6 +549,7 @@ else
     private bool _postAsPending;
     private string _tabColor = string.Empty;
     private string _launchCommand = string.Empty;
+    private string _model = string.Empty;
     private static readonly PlatformKind CurrentPlatform = PlatformKindDetector.Current;
     private PlatformKind _editingPlatform = CurrentPlatform;
     private bool _showPlatformAdvanced;
@@ -654,6 +670,7 @@ else
         _postAsPending = _cfg.ReviewLauncher.PostAsPending;
         _tabColor = _cfg.ReviewLauncher.TabColor;
         _launchCommand = _cfg.ReviewLauncher.LaunchCommand;
+        _model = _cfg.ReviewLauncher.Model;
         LoadPlatformEditor(_editingPlatform);
     }
 
@@ -1112,6 +1129,21 @@ else
                 ? new ReviewLauncherSettings().LaunchCommand
                 : entered;
             SetMessage("Review launch command updated.");
+        });
+    }
+
+    private Task OnModelChanged(ChangeEventArgs e)
+    {
+        var entered = e.Value?.ToString()?.Trim() ?? string.Empty;
+        _model = entered;
+        return WrapAsync(async () =>
+        {
+            await ConfigSvc.SetReviewLauncherModelAsync(entered);
+            // Blank restores the default; reflect the effective value in the box.
+            _model = string.IsNullOrEmpty(entered)
+                ? new ReviewLauncherSettings().Model
+                : entered;
+            SetMessage("Review model updated.");
         });
     }
 
