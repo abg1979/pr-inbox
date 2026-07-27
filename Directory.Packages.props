@@ -7,11 +7,11 @@
 
   <ItemGroup>
     <!-- CLI / UX -->
-    <PackageVersion Include="Spectre.Console" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="Spectre.Console.Cli" Version="0.55.0" />
 
     <!-- Storage -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <!-- Transitive pin: Microsoft.Data.Sqlite 10.0.x still resolves the vulnerable native
          SQLitePCLRaw.lib.e_sqlite3 2.1.11 (GHSA-2m69-gcr7-jv3q / CVE-2025-6965, SQLite < 3.50.2).
          3.50.3 ships patched SQLite with the same native asset layout and no managed deps. -->
@@ -22,26 +22,26 @@
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
 
     <!-- YAML parsing for findings.yaml schema -->
-    <PackageVersion Include="YamlDotNet" Version="16.2.1" />
-    <PackageVersion Include="JsonSchema.Net" Version="9.2.2" />
+    <PackageVersion Include="YamlDotNet" Version="18.1.0" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.3.0" />
 
     <!-- DI / config -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
 
     <!-- Logging -->
-    <PackageVersion Include="Serilog" Version="4.3.1" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
     <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
 
     <!-- Test -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.7.0" />
-    <PackageVersion Include="xunit" Version="2.9.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.0" />
-    <PackageVersion Include="FluentAssertions" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="FluentAssertions" Version="7.2.2" />
   </ItemGroup>
 
 </Project>
