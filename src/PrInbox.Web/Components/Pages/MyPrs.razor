@@ -7,6 +7,7 @@
 @inject InboxSyncHostedService Sync
 @inject PrInboxConfig Config
 @inject UiPreferencesRepository Prefs
+@inject IReviewLauncher Launcher
 @inject NavigationManager Nav
 @inject ILogger<MyPrs> Log
 
@@ -32,6 +33,10 @@
                @onchange="@(e => OnHideDraftsToggleAsync((bool)e.Value!))" />
         Hide drafts
     </label>
+    @if (!string.IsNullOrEmpty(_lastLaunchMessage))
+    {
+        <span class="muted">@_lastLaunchMessage</span>
+    }
 </div>
 
 @if (SourceChips.Count > 1)
@@ -68,6 +73,7 @@ else
                 <th>CI</th>
                 <th>Review</th>
                 <th>Mergeable</th>
+                <th>Actions</th>
                 <th>Age</th>
                 <th>Last sync</th>
             </tr>
@@ -111,6 +117,9 @@ else
                         }
                         else { <span class="muted">@(row.EnrichState == EnrichState.Enriched ? "–" : "…")</span> }
                     </td>
+                    <td>
+                        <button class="review" @onclick="() => OnReviewAsync(row)">Review</button>
+                    </td>
                     <td title="@AgeTooltip(row.UpstreamCreatedAt)">@AgeLabel(row.UpstreamCreatedAt)</td>
                     <td>@RelativeTime(row.LastSyncedAt)</td>
                 </tr>
@@ -129,6 +138,7 @@ else
     private bool _refreshing;
     private bool _showClosed;
     private bool _hideDrafts;
+    private string? _lastLaunchMessage;
 
     private record SourceChip(string Class, string Label);
 
@@ -248,6 +258,19 @@ else
         finally
         {
             _refreshing = false;
+        }
+    }
+
+    private async Task OnReviewAsync(InboxRow row)
+    {
+        try
+        {
+            _lastLaunchMessage = await Launcher.LaunchAsync(row.Url, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Review launcher threw");
+            _lastLaunchMessage = $"Launcher error: {ex.Message}";
         }
     }
 

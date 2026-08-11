@@ -145,7 +145,7 @@ public sealed class GitHubReadSource : IPrReadSource
         while (true)
         {
             ct.ThrowIfCancellationRequested();
-            _logger.LogDebug("GitHub search request (sourceId={SourceId}, host={Host}, query={Query}, page={Page}, perPage={PerPage}).",
+            _logger.LogInformation("GitHub search request (sourceId={SourceId}, host={Host}, query={Query}, page={Page}, perPage={PerPage}).",
                 SourceId, _hostname, query, page, perPage);
             var req = new SearchIssuesRequest(query)
             {
@@ -163,7 +163,7 @@ public sealed class GitHubReadSource : IPrReadSource
                 throw;
             }
 
-            _logger.LogDebug(
+            _logger.LogInformation(
                 "GitHub search response (sourceId={SourceId}, query={Query}, page={Page}, items={ItemCount}, total={TotalCount}).",
                 SourceId,
                 query,
@@ -210,6 +210,8 @@ public sealed class GitHubReadSource : IPrReadSource
         var (owner, repo, number) = ParseUrl(id.Url);
         var sw = Stopwatch.StartNew();
         var client = await CreateClientAsync(ct);
+        _logger.LogInformation("GitHub detail request (sourceId={SourceId}, host={Host}, owner={Owner}, repo={Repo}, number={Number}, url={Url}).",
+            SourceId, _hostname, owner, repo, number, id.Url);
 
         var pr = await client.PullRequest.Get(owner, repo, number);
 
@@ -273,7 +275,7 @@ public sealed class GitHubReadSource : IPrReadSource
                 : pr.Mergeable == false ? "conflicts"
                 : null);
 
-        _logger.LogDebug(
+        _logger.LogInformation(
             "GitHub detail response (sourceId={SourceId}, url={Url}, commits={CommitCount}, files={FileCount}, ciStatus={CiStatus}, elapsedMs={ElapsedMs}).",
             SourceId,
             id.Url,
@@ -321,6 +323,8 @@ public sealed class GitHubReadSource : IPrReadSource
         var (owner, repo, number) = ParseUrl(id.Url);
         var sw = Stopwatch.StartNew();
         var client = await CreateClientAsync(ct);
+        _logger.LogInformation("GitHub thread request (sourceId={SourceId}, host={Host}, owner={Owner}, repo={Repo}, number={Number}, url={Url}).",
+            SourceId, _hostname, owner, repo, number, id.Url);
 
         var result = new List<RemoteThread>();
 
@@ -413,7 +417,7 @@ public sealed class GitHubReadSource : IPrReadSource
                 AnchorLine: null));
         }
 
-        _logger.LogDebug(
+        _logger.LogInformation(
             "GitHub thread response (sourceId={SourceId}, url={Url}, threadCount={ThreadCount}, elapsedMs={ElapsedMs}).",
             SourceId,
             id.Url,
@@ -557,6 +561,8 @@ public sealed class GitHubReadSource : IPrReadSource
     {
         var (owner, repo, number) = ParseUrl(id.Url);
         var client = await CreateClientAsync(ct);
+        _logger.LogInformation("GitHub commits request (sourceId={SourceId}, host={Host}, owner={Owner}, repo={Repo}, number={Number}, url={Url}).",
+            SourceId, _hostname, owner, repo, number, id.Url);
         var commits = await client.PullRequest.Commits(owner, repo, number);
         var mapped = commits
             .Reverse() // newest-first
@@ -566,7 +572,7 @@ public sealed class GitHubReadSource : IPrReadSource
                 CommittedAt: c.Commit?.Author?.Date ?? DateTimeOffset.UtcNow,
                 Subject: FirstLineOf(c.Commit?.Message ?? string.Empty)))
             .ToList();
-        _logger.LogDebug("GitHub commits response (sourceId={SourceId}, url={Url}, commitCount={CommitCount}).", SourceId, id.Url, mapped.Count);
+        _logger.LogInformation("GitHub commits response (sourceId={SourceId}, url={Url}, commitCount={CommitCount}).", SourceId, id.Url, mapped.Count);
         return mapped;
     }
 
@@ -579,6 +585,15 @@ public sealed class GitHubReadSource : IPrReadSource
 
         var (owner, repo, _) = ParseUrl(id.Url);
         var client = await CreateClientAsync(ct);
+        _logger.LogInformation(
+            "GitHub compare request (sourceId={SourceId}, host={Host}, owner={Owner}, repo={Repo}, url={Url}, previousHead={PreviousHead}, currentHead={CurrentHead}).",
+            SourceId,
+            _hostname,
+            owner,
+            repo,
+            id.Url,
+            previousHeadSha,
+            currentHeadSha);
 
         try
         {
@@ -589,7 +604,7 @@ public sealed class GitHubReadSource : IPrReadSource
                 BaseUnreachableFromHead: forcePushed,
                 CommitsAhead: compare.AheadBy,
                 CommitsBehind: compare.BehindBy);
-            _logger.LogDebug(
+            _logger.LogInformation(
                 "GitHub compare response (sourceId={SourceId}, url={Url}, forcePushed={ForcePushed}, ahead={Ahead}, behind={Behind}).",
                 SourceId,
                 id.Url,
@@ -601,7 +616,7 @@ public sealed class GitHubReadSource : IPrReadSource
         catch (NotFoundException)
         {
             // Previous SHA is gone entirely — definitive force-push signal.
-            _logger.LogDebug("GitHub compare detected missing base commit (sourceId={SourceId}, url={Url}, previousHead={PreviousHead}).",
+            _logger.LogInformation("GitHub compare detected missing base commit (sourceId={SourceId}, url={Url}, previousHead={PreviousHead}).",
                 SourceId, id.Url, previousHeadSha);
             return new CompareResult(BaseUnreachableFromHead: true, CommitsAhead: 0, CommitsBehind: 1);
         }

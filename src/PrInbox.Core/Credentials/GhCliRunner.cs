@@ -36,7 +36,7 @@ public sealed class GhCliRunner : IGhCliRunner
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
 
-        _logger.LogDebug("Invoking: {Exe} {Args}", _ghExecutable, string.Join(' ', args));
+        _logger.LogInformation("Executing gh command: {Exe} {Args}", _ghExecutable, string.Join(' ', args));
 
         Process? process;
         try
@@ -49,7 +49,7 @@ public sealed class GhCliRunner : IGhCliRunner
         }
         catch (Win32Exception ex)
         {
-            _logger.LogDebug(ex, "gh binary not found on PATH.");
+            _logger.LogWarning(ex, "gh binary not found on PATH.");
             return new GhCliResult(-1, string.Empty, string.Empty, FailedToStart: true);
         }
 

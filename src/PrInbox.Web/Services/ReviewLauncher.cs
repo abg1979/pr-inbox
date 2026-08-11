@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 using PrInbox.Core.Credentials;
 using PrInbox.Core.Reviewing;
@@ -305,6 +306,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         var pluginDir = FindPluginDir();
         var resolved = rl.ResolveForCurrentPlatform(pluginDir);
         var launchCommand = BuildReviewCommand(resolved.LaunchCommand, rl.AutoSend, rl.Yolo);
+        _log.LogInformation("Resolved review launch command: {Command}", launchCommand);
         _log.LogInformation(
             "Spawning review console (runId={RunId}, platform={Platform}, runDir={RunDir}, tabPerReview={TabPerReview}).",
             runId,
@@ -323,9 +325,15 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         {
             var started = resolved.Platform switch
             {
-                PlatformKind.Windows => StartWindowsConsole(runDir, safeTitle, tabColorArg, launchCommand, rl.TabPerReview),
-                PlatformKind.MacOS => StartMacOsConsole(runDir, safeTitle, launchCommand, resolved),
-                _ => StartLinuxConsole(runDir, safeTitle, launchCommand, resolved),
+                PlatformKind.Windows => StartWindowsConsole(
+                    runDir, safeTitle, tabColorArg, launchCommand, rl.TabPerReview,
+                    msg => _log.LogInformation("{Message}", msg)),
+                PlatformKind.MacOS => StartMacOsConsole(
+                    runDir, safeTitle, launchCommand, resolved,
+                    msg => _log.LogInformation("{Message}", msg)),
+                _ => StartLinuxConsole(
+                    runDir, safeTitle, launchCommand, resolved,
+                    msg => _log.LogInformation("{Message}", msg)),
             };
 
             if (!started)
@@ -368,7 +376,8 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         string runDir, string command)
     {
         var window = tabPerReview ? ReviewLauncherSettings.ReviewWindowName : "new";
-        return $"-w {window} nt --title \"{safeTitle}\" --suppressApplicationTitle{tabColorArg} -d \"{runDir}\" pwsh -NoExit -Command \"{EscapeForPowerShellCommand(command)}\"";
+        var encoded = EncodeForPowerShellCommand(command);
+        return $"-w {window} nt --title \"{safeTitle}\" --suppressApplicationTitle{tabColorArg} -d \"{runDir}\" pwsh -NoExit -EncodedCommand {encoded}";
     }
 
     /// <summary>
@@ -410,12 +419,13 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return null;
     }
 
-    private static bool StartWindowsConsole(string runDir, string safeTitle, string tabColorArg, string command, bool tabPerReview)
+    private static bool StartWindowsConsole(string runDir, string safeTitle, string tabColorArg, string command, bool tabPerReview, Action<string>? logCommand = null)
     {
         var wt = ResolveOnPath("wt.exe");
         if (wt is not null)
         {
             var args = BuildWtArguments(tabPerReview, safeTitle, tabColorArg, runDir, command);
+            logCommand?.Invoke($"Launching terminal command: {wt} {args}");
             Process.Start(new ProcessStartInfo
             {
                 FileName = wt,
@@ -425,7 +435,9 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
             return true;
         }
 
-        var fallbackArgs = $"/c start \"{safeTitle}\" pwsh -NoExit -Command \"{EscapeForPowerShellCommand(command)}\"";
+        var encoded = EncodeForPowerShellCommand(command);
+        var fallbackArgs = $"/c start \"{safeTitle}\" pwsh -NoExit -EncodedCommand {encoded}";
+        logCommand?.Invoke($"Launching fallback terminal command: cmd.exe {fallbackArgs}");
         Process.Start(new ProcessStartInfo
         {
             FileName = "cmd.exe",
@@ -435,16 +447,16 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return true;
     }
 
-    private static bool StartMacOsConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved)
+    private static bool StartMacOsConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved, Action<string>? logCommand = null)
     {
         if (!string.IsNullOrWhiteSpace(resolved.TerminalRawCommand))
         {
-            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command);
+            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command, logCommand);
         }
 
         if (!string.IsNullOrWhiteSpace(resolved.TerminalProgram) && !string.IsNullOrWhiteSpace(resolved.TerminalArgsTemplate))
         {
-            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command);
+            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command, logCommand);
         }
 
         // Default macOS host: Terminal.app via AppleScript.
@@ -452,6 +464,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         // raw argument — no shell quoting layer that would misparse the literal
         // double quotes that are part of the AppleScript string syntax.
         var script = $"tell application \"Terminal\" to do script \"cd {EscapeForAppleScriptSingleQuotedPath(runDir)}; {EscapeForAppleScript(command)}\"";
+        logCommand?.Invoke($"Launching macOS terminal command: osascript -e {script}");
         var psi = new ProcessStartInfo { FileName = "osascript", UseShellExecute = false };
         psi.ArgumentList.Add("-e");
         psi.ArgumentList.Add(script);
@@ -459,16 +472,16 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return true;
     }
 
-    private static bool StartLinuxConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved)
+    private static bool StartLinuxConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved, Action<string>? logCommand = null)
     {
         if (!string.IsNullOrWhiteSpace(resolved.TerminalRawCommand))
         {
-            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command);
+            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command, logCommand);
         }
 
         if (!string.IsNullOrWhiteSpace(resolved.TerminalProgram) && !string.IsNullOrWhiteSpace(resolved.TerminalArgsTemplate))
         {
-            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command);
+            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command, logCommand);
         }
 
         foreach (var terminal in new[] { "x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm" })
@@ -485,6 +498,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
                 "xfce4-terminal" => $"--title \"{safeTitle}\" --working-directory \"{runDir}\" --command \"bash -lc \\\"{bashCommand}\\\"\"",
                 _ => $"-T \"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
             };
+            logCommand?.Invoke($"Launching linux terminal command: {resolvedPath} {args}");
             Process.Start(new ProcessStartInfo
             {
                 FileName = resolvedPath,
@@ -498,12 +512,13 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return false;
     }
 
-    private static bool StartWithStructuredTemplate(string program, string argsTemplate, string runDir, string title, string command)
+    private static bool StartWithStructuredTemplate(string program, string argsTemplate, string runDir, string title, string command, Action<string>? logCommand = null)
     {
         var args = argsTemplate
             .Replace("{runDir}", runDir)
             .Replace("{title}", title)
             .Replace("{command}", command);
+        logCommand?.Invoke($"Launching structured terminal command: {program} {args}");
 
         Process.Start(new ProcessStartInfo
         {
@@ -515,7 +530,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return true;
     }
 
-    private static bool StartWithRawShellCommand(string rawCommand, string runDir, string title, string command)
+    private static bool StartWithRawShellCommand(string rawCommand, string runDir, string title, string command, Action<string>? logCommand = null)
     {
         var expanded = rawCommand
             .Replace("{runDir}", runDir)
@@ -524,6 +539,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
 
         if (OperatingSystem.IsWindows())
         {
+            logCommand?.Invoke($"Launching raw shell command: cmd.exe /c {expanded}");
             Process.Start(new ProcessStartInfo
             {
                 FileName = "cmd.exe",
@@ -534,6 +550,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
             return true;
         }
 
+        logCommand?.Invoke($"Launching raw shell command: /bin/sh -lc \"{expanded.Replace("\"", "\\\"")}\"");
         Process.Start(new ProcessStartInfo
         {
             FileName = "/bin/sh",
@@ -546,7 +563,10 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
 
     private static string BuildReviewCommand(string resolvedLaunchCommand, bool autoSend, bool yolo)
     {
-        var command = resolvedLaunchCommand.Trim();
+        // The launch template should define only the executable + stable flags.
+        // Any inline prompt flag from older/custom templates (-p/--prompt/-i)
+        // is stripped so auto-send can append one well-formed bootstrap turn.
+        var command = StripInlinePromptFlags(resolvedLaunchCommand).Trim();
         if (autoSend)
         {
             command += " -i \"Read brief.md and proceed.\"";
@@ -558,8 +578,17 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return command;
     }
 
-    private static string EscapeForPowerShellCommand(string command)
-        => command.Replace("\"", "`\"");
+    private static string StripInlinePromptFlags(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return command;
+        var m = Regex.Match(command, @"(^|\s)(?:-p|--prompt|-i)\b", RegexOptions.IgnoreCase);
+        return m.Success
+            ? command[..m.Index].TrimEnd()
+            : command;
+    }
+
+    private static string EncodeForPowerShellCommand(string command)
+        => Convert.ToBase64String(Encoding.Unicode.GetBytes(command));
 
     private static string EscapeForAppleScript(string value)
         => value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", " ");

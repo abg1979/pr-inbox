@@ -60,3 +60,4 @@ TestResults/
 # `dotnet run` on a fresh clone lands on the right port + Development
 # environment. Otherwise the app defaults to port 5000 / Production,
 # which silently breaks Blazor's _framework/blazor.web.js serving.
+artifacts/

@@ -101,6 +101,23 @@ $resolvedCommand = $LaunchCommand.
     Replace('{plugin}', $Plugin).
     Replace('{model}',  $Model).
     Replace('{agent}',  $Agent)
+Write-Host ("[launch-review] Command template resolved to: " + $resolvedCommand) -ForegroundColor DarkGray
+
+function Remove-InlinePromptFlags {
+    param([string] $Command)
+    if ([string]::IsNullOrWhiteSpace($Command)) { return $Command }
+    $m = [regex]::Match($Command, '(^|\s)(-p|--prompt|-i)\b', 'IgnoreCase')
+    if ($m.Success) {
+        return $Command.Substring(0, $m.Index).TrimEnd()
+    }
+    return $Command
+}
+
+# Legacy/custom launch templates sometimes inline a prompt flag (`-p` /
+# `--prompt` / `-i`). Strip any such suffix so we own one well-formed
+# bootstrap turn below.
+$resolvedCommand = Remove-InlinePromptFlags -Command $resolvedCommand
+Write-Host ("[launch-review] Command after inline prompt cleanup: " + $resolvedCommand) -ForegroundColor DarkGray
 
 $ErrorActionPreference = 'Stop'
 
@@ -122,6 +139,7 @@ $autoSend = -not $NoAutoSend
 # brief stay editable up until the agent reads it.
 $copied = $false
 if (-not $autoSend) {
+    Write-Host '[launch-review] Running: Set-Clipboard <brief.md contents>' -ForegroundColor DarkGray
     try {
         Set-Clipboard -Value $brief
         $copied = $true
@@ -189,31 +207,15 @@ foreach ($name in $inherited) {
 # parameter and surfaced in the banner above for diagnostics, but it
 # is intentionally NOT forwarded.
 
-# Tokenize the resolved launch command and invoke it. Pass-through flags
-# (-i bootstrap, --yolo) are appended after.
-$cmdTokens = @($resolvedCommand -split '\s+' | Where-Object { $_ })
-$cmdExe    = $cmdTokens[0]
-$cmdArgs   = if ($cmdTokens.Count -gt 1) { $cmdTokens[1..($cmdTokens.Count - 1)] } else { @() }
-
-# Forward unknown flags (-i, --yolo) straight to copilot. Empirical:
-# agency's clap config treats unknown flags as pass-through to the
-# engine. Importantly, do NOT use the `--` separator: when present,
-# agency includes it in the args it spawns copilot with and copilot
-# parses everything past `--` as positional, which it doesn't accept
-# (error: too many arguments, expected 0, got N).
-#
-# -i (not -p) keeps the session interactive but auto-executes the
-# bootstrap message as the first turn. The agent's cwd is the run
-# directory (set by wt's `-d "<runDir>"` on the parent terminal), so
-# `brief.md` is a bare-filename Read away.
-$passThrough = @()
+# Build one invocation line so user/template quoting is preserved.
+# Do not whitespace-split the command string; that breaks quoted args.
+$invokeLine = $resolvedCommand
 if ($autoSend) {
-    $passThrough += '-i'
-    $passThrough += 'Read brief.md and proceed.'
+    $invokeLine += " -i 'Read brief.md and proceed.'"
 }
 if ($Yolo) {
-    $passThrough += '--yolo'
+    $invokeLine += ' --yolo'
 }
 
-& $cmdExe @cmdArgs @passThrough
-
+Write-Host ("[launch-review] Final command: " + $invokeLine) -ForegroundColor DarkGray
+& ([scriptblock]::Create($invokeLine))

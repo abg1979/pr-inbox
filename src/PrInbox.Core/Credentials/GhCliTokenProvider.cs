@@ -119,7 +119,7 @@ public sealed class GhCliTokenProvider : ITokenProvider
         }
 
         var argsForLog = string.Join(' ', args);
-        _logger.LogDebug("Invoking: {Exe} {Args}", _ghExecutable, argsForLog);
+        _logger.LogInformation("Executing gh command: {Exe} {Args}", _ghExecutable, argsForLog);
 
         try
         {
