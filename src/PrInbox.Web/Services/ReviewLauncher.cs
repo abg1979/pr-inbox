@@ -305,7 +305,8 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         var rl = _config.ReviewLauncher;
         var pluginDir = FindPluginDir();
         var resolved = rl.ResolveForCurrentPlatform(pluginDir);
-        var launchCommand = BuildReviewCommand(resolved.LaunchCommand, rl.AutoSend, rl.Yolo);
+        var launchCommand = BuildReviewCommand(
+            resolved.LaunchCommand, rl.AutoSend, rl.AllowAllPaths, rl.Yolo);
         _log.LogInformation("Resolved review launch command: {Command}", launchCommand);
         _log.LogInformation(
             "Spawning review console (runId={RunId}, platform={Platform}, runDir={RunDir}, tabPerReview={TabPerReview}).",
@@ -561,7 +562,8 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return true;
     }
 
-    private static string BuildReviewCommand(string resolvedLaunchCommand, bool autoSend, bool yolo)
+    private static string BuildReviewCommand(
+        string resolvedLaunchCommand, bool autoSend, bool allowAllPaths, bool yolo)
     {
         // The launch template should define only the executable + stable flags.
         // Any inline prompt flag from older/custom templates (-p/--prompt/-i)
@@ -571,12 +573,30 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         {
             command += " -i \"Read brief.md and proceed.\"";
         }
+        if (allowAllPaths && !yolo)
+        {
+            command += " --allow-all-paths";
+        }
         if (yolo)
         {
             command += " --yolo";
         }
         return command;
     }
+
+    internal static string BuildLauncherScriptArguments(
+        string runDir,
+        string launchCommand,
+        string safeSessionName,
+        bool autoSend,
+        bool allowAllPaths,
+        bool yolo) =>
+        $"-RunDirectory \"{runDir}\"" +
+        $" -LaunchCommand \"{launchCommand}\"" +
+        $" -SessionName \"{safeSessionName}\"" +
+        (autoSend ? "" : " -NoAutoSend") +
+        (allowAllPaths ? " -AllowAllPaths" : "") +
+        (yolo ? " -Yolo" : "");
 
     private static string StripInlinePromptFlags(string command)
     {

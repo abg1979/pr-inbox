@@ -257,7 +257,7 @@ when launching from the web UI):
 | `PRINBOX_REVIEW_COMMAND` | `copilot --plugin-dir {plugindir} --model {model} --agent {agent}` | Launch command template (owns the CLI + flag syntax) |
 | `PRINBOX_REVIEW_AGENT` | `dual-review:dual-model-review` | Value for the `{agent}` placeholder |
 | `PRINBOX_REVIEW_PLUGIN` | `market:dual-review@jmprieur/pr-inbox` | Value for the `{plugin}` placeholder (agency marketplace spec) |
-| `PRINBOX_REVIEW_MODEL` | `claude-opus-4.8` | Value for the `{model}` placeholder |
+| `PRINBOX_REVIEW_MODEL` | `gpt-5.6-sol` | Value for the `{model}` placeholder (the review orchestrator) |
 | `PRINBOX_PLUGIN_DIR` | _(auto-resolved)_ | Overrides the `{plugindir}` path (bundled `plugins/dual-review`) |
 
 ### Platform-specific launcher overrides

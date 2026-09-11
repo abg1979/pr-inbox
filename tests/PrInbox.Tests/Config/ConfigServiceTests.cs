@@ -261,22 +261,26 @@ public sealed class ConfigServiceTests : IDisposable
         var singleton = new PrInboxConfig();
         var svc = new ConfigService(singleton, _path);
         singleton.ReviewLauncher.AutoSend.Should().BeTrue();   // baseline default
+        singleton.ReviewLauncher.AllowAllPaths.Should().BeFalse();
         singleton.ReviewLauncher.Yolo.Should().BeFalse();
 
-        await svc.SetReviewLauncherFlagsAsync(autoSend: false, yolo: true);
+        await svc.SetReviewLauncherFlagsAsync(autoSend: false, allowAllPaths: true, yolo: true);
 
         // Singleton mirrored in-place (same instance — ReviewLauncher reads this).
         singleton.ReviewLauncher.AutoSend.Should().BeFalse();
+        singleton.ReviewLauncher.AllowAllPaths.Should().BeTrue();
         singleton.ReviewLauncher.Yolo.Should().BeTrue();
 
         // And persisted to disk.
         var reloaded = await svc.GetAsync();
         reloaded.ReviewLauncher.AutoSend.Should().BeFalse();
+        reloaded.ReviewLauncher.AllowAllPaths.Should().BeTrue();
         reloaded.ReviewLauncher.Yolo.Should().BeTrue();
 
         // Round-trip toggling back also works.
-        await svc.SetReviewLauncherFlagsAsync(autoSend: true, yolo: false);
+        await svc.SetReviewLauncherFlagsAsync(autoSend: true, allowAllPaths: false, yolo: false);
         singleton.ReviewLauncher.AutoSend.Should().BeTrue();
+        singleton.ReviewLauncher.AllowAllPaths.Should().BeFalse();
         singleton.ReviewLauncher.Yolo.Should().BeFalse();
     }
 
@@ -349,13 +353,13 @@ public sealed class ConfigServiceTests : IDisposable
         {
             LaunchCommand = "x {plugindir} {plugin} {model} {agent}",
             Plugin = "market:dual-review@jmprieur/pr-inbox",
-            Model = "claude-opus-4.8",
+            Model = "gpt-5.6-sol",
             Agent = "dual-review:dual-model-review",
         };
 
         rl.ResolveLaunchCommand("C:/repo/plugins/dual-review").Should().Be(
             "x C:/repo/plugins/dual-review market:dual-review@jmprieur/pr-inbox " +
-            "claude-opus-4.8 dual-review:dual-model-review");
+            "gpt-5.6-sol dual-review:dual-model-review");
     }
 
     [Fact]

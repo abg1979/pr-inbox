@@ -21,6 +21,10 @@
     to --allow-all-tools --allow-all-paths --allow-all-urls). Skips every
     permission prompt for the duration of this session.
 
+    Pass -AllowAllPaths to add `--allow-all-paths` to copilot's
+    pass-through args. Skips file-path approval prompts while retaining
+    tool and URL approval prompts.
+
     The agent writes findings.yaml back into the run directory;
     pr-inbox-web watches for it.
 
@@ -46,7 +50,7 @@
 
 .PARAMETER Model
     Value substituted into the {model} placeholder. Defaults to
-    claude-opus-4.8.
+    gpt-5.6-sol.
 
 .PARAMETER SessionName
     Optional human-readable name for the underlying copilot session.
@@ -63,6 +67,10 @@
 .PARAMETER Yolo
     Pass `--yolo` to copilot. Auto-approves all tool / path / URL
     permission prompts for the session. Off by default.
+
+.PARAMETER AllowAllPaths
+    Pass `--allow-all-paths` to copilot. Auto-approves file path access
+    while retaining tool and URL permission prompts. Off by default.
 #>
 
 param(
@@ -73,12 +81,13 @@ param(
     [string] $LaunchCommand = $env:PRINBOX_REVIEW_COMMAND,
     [string] $SessionName = '',
     [switch] $NoAutoSend,
+    [switch] $AllowAllPaths,
     [switch] $Yolo
 )
 
 if (-not $Agent)  { $Agent  = 'dual-review:dual-model-review' }
 if (-not $Plugin) { $Plugin = 'market:dual-review@jmprieur/pr-inbox' }
-if (-not $Model)  { $Model  = 'claude-opus-4.8' }
+if (-not $Model)  { $Model  = 'gpt-5.6-sol' }
 # Default launch command targets the public GitHub Copilot CLI, which loads
 # the plugin from a local directory. Microsoft users set PRINBOX_REVIEW_COMMAND
 # (or the Settings field) to e.g.
@@ -170,6 +179,8 @@ if ($SessionName) {
 }
 if ($Yolo) {
     Write-Host ' Yolo:     ON (--yolo — all permission prompts auto-approved)' -ForegroundColor Yellow
+} elseif ($AllowAllPaths) {
+    Write-Host ' Paths:    ON (--allow-all-paths — folder approval skipped)' -ForegroundColor Yellow
 }
 Write-Host (' Findings: ' + $findingsPath) -ForegroundColor DarkGray
 Write-Host '------------------------------------------------------------' -ForegroundColor DarkGray
@@ -212,6 +223,9 @@ foreach ($name in $inherited) {
 $invokeLine = $resolvedCommand
 if ($autoSend) {
     $invokeLine += " -i 'Read brief.md and proceed.'"
+}
+if ($AllowAllPaths -and -not $Yolo) {
+    $invokeLine += ' --allow-all-paths'
 }
 if ($Yolo) {
     $invokeLine += ' --yolo'

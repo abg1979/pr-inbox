@@ -238,7 +238,7 @@ public sealed class ReviewLauncherSettings
     public string Plugin { get; init; } = "market:dual-review@jmprieur/pr-inbox";
 
     /// <summary>Model id substituted into the <c>{model}</c> placeholder.</summary>
-    public string Model { get; set; } = "claude-opus-4.8";
+    public string Model { get; set; } = "gpt-5.6-sol";
 
     /// <summary>Agent id substituted into the <c>{agent}</c> placeholder.</summary>
     public string Agent { get; init; } = "dual-review:dual-model-review";
@@ -290,6 +290,18 @@ public sealed class ReviewLauncherSettings
     /// picks it up without a process restart.
     /// </remarks>
     public bool AutoSend { get; set; } = true;
+
+    /// <summary>
+    /// When true, appends <c>--allow-all-paths</c> to copilot's
+    /// pass-through args. This skips file-path approval prompts while
+    /// retaining tool and URL approval prompts. Default <c>false</c>.
+    /// </summary>
+    /// <remarks>
+    /// Mutable (<c>set</c> not <c>init</c>) so the Settings page can
+    /// toggle it on the live DI singleton and the next review launch
+    /// picks it up without a process restart.
+    /// </remarks>
+    public bool AllowAllPaths { get; set; } = false;
 
     /// <summary>
     /// When true, appends <c>--yolo</c> to copilot's pass-through args
