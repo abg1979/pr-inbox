@@ -717,7 +717,7 @@ from the CLI, the same seven steps run:
    - Your open threads with status
    - Recent bot comments (Copilot review, Copilot coding agent) since
      the last brief
-   - Standard `dual-model-review` invocation block (Opus 4.7 + GPT-5.5,
+   - Standard `dual-model-review` invocation block (Opus 5 + GPT 5.6 Sol,
      asymmetry instructions, `do NOT post`, `diff_anchorable` flag,
      95%+ inline filter)
    - Staleness clause ("verify PR HEAD is still `<sha>` before posting")

@@ -24,7 +24,7 @@ will run the actual `dual-model-review`.
 
 Reviewing many PRs at scale across three platforms with two identities is
 manual. The pain is not the review skill itself — that's mature
-(`dual-model-review` with Opus 4.7 + GPT-5.5, asymmetry pattern stable at N=6).
+(`dual-model-review` with Opus 5 + GPT 5.6 Sol, asymmetry pattern stable at N=6).
 The pain is:
 
 | Pain | What `pr-inbox` does about it |
