@@ -1047,4 +1047,27 @@ public class InboxFiltersTests
         row.TouchedPathState.Should().Be(TouchedPathState.Complete);
         row.TouchedPaths.Should().BeEquivalentTo(new[] { "src/A/x.cs" });
     }
+
+    [Fact]
+    public void FromRow_Defaults_HasSnapshot_To_False()
+    {
+        var pr = MakePr(displayRepo: "o/r");
+
+        var row = InboxRow.FromRow(pr, openThreads: 0, unresolvedBot: 0);
+
+        row.HasSnapshot.Should().BeFalse();
+    }
+
+    [Fact]
+    public void FromRow_Threads_HasSnapshot_True_Regardless_Of_EnrichState()
+    {
+        var pr = MakePr(displayRepo: "o/r");
+
+        var row = InboxRow.FromRow(pr, openThreads: 0, unresolvedBot: 0, hasSnapshot: true);
+
+        // HasSnapshot is threaded independently of EnrichState — the
+        // resolver combines them itself (e.g. Basic + HasSnapshot =>
+        // "basic sync complete", not review-ready).
+        row.HasSnapshot.Should().BeTrue();
+    }
 }

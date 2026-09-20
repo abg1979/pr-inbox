@@ -14,6 +14,7 @@
 - [Mental model in one paragraph](#mental-model-in-one-paragraph)
 - [First ten minutes](#first-ten-minutes)
 - [Daily flow 1 — Triage the inbox](#daily-flow-1--triage-the-inbox)
+  - [Row color & Review readiness](#row-color--review-readiness)
   - [Disappeared PRs](#disappeared-prs)
 - [Daily flow 2 — Review a PR](#daily-flow-2--review-a-pr)
 - [Daily flow 3 — Close the loop](#daily-flow-3--close-the-loop)
@@ -115,7 +116,9 @@ status line shows `Last sync: …`. PRs appear as they're discovered.
 
 ### 5. Click Review on something
 
-Pick any row, hit **Review**. A new Windows Terminal window opens —
+Pick any row, hit **Review**. (The button is only enabled once that
+row shows 🟢 **Review ready** — see [§ Row color & Review readiness](#row-color--review-readiness).)
+A new Windows Terminal window opens —
 titled like `alice playground #8114 @ff2dcab 15:46` (author · repo · PR
 number · head SHA · launch time) — runs `copilot` against the
 generated brief, and starts the dual-model-review pass. **You did not
@@ -152,13 +155,36 @@ just `Repos • 23` / `Authors • 24`.
 | **Drift** | `+N` commits since last review, or `⚠ force-push` | Anchored on `last_reviewed_head_sha` |
 | **Findings** | Per-severity pills `C:0 H:1 M:2 L:0`, plus `✓ clean` or convergence badge | Click any pill → opens Review page filtered to that severity |
 | **Threads** | `N open · M bot` and (when applicable) `✓ K ready` | "ready" = K threads have a likely-done reply (see flow 3) |
+| **Last sync** | Relative time since last synced, or a live `syncing` indicator | Shows `syncing` only while *this* PR is actively being fast-synced or enriched |
 | **Actions** | `Review`, `Done` / `Undo done`, `Ignore` / `Unignore` | |
 
 Rows you used to track but are no longer assigned to appear muted with
 a small **`no longer assigned`** chip — see [§ Disappeared PRs](#disappeared-prs)
 below.
 
-### Filters you'll actually use
+### Row color & Review readiness
+
+Every row's background tint and left accent border reflect one of four
+lifecycle states, resolved the same way on Inbox and My PRs so the two
+pages never disagree. A legend above each table decodes the colors, and
+hovering a row shows the same label as a tooltip — color is never the
+only signal. Priority order (top wins):
+
+| State | Meaning | Review button |
+|---|---|---|
+| 🟠 **Syncing now** | This specific PR is actively being fast-synced or enriched right now | Disabled — try again once sync finishes |
+| 🟢 **Review ready** | Fully enriched (`EnrichState.Enriched`) — the current detailed snapshot is loaded | Enabled |
+| 🔵 **Basic sync complete** | List-tier data is current, but detailed enrichment for the latest upstream state hasn't landed yet (an older snapshot exists) | Disabled — wait for detailed sync |
+| ⚪ **Sync pending** | First-time row: no snapshot has ever been fetched | Disabled — waiting for first detailed sync |
+
+This is intentionally stricter than the minimum the backend needs to
+build a review brief (which only requires *any* prior snapshot) — the UI
+withholds Review until the row's own detailed enrichment is current, so
+you don't launch against stale data. A row's "syncing now" state always
+overrides the other three, even if it's otherwise review-ready, since a
+new snapshot may be landing at that instant.
+
+
 
 The pipeline applied to every load:
 
@@ -701,6 +727,12 @@ Inbox sync (background)
 ```
 
 You can re-trigger immediately with **Refresh now** on the inbox.
+
+While a fast/enrich pass is running, the PR(s) currently being processed
+show a `syncing` indicator in their **Last sync** cell (Inbox and My PRs
+tables) instead of the last-synced timestamp — a per-row signal rather
+than a single global "syncing" message, since multiple sources can be
+mid-pass at once.
 
 ### What "Review" actually does
 

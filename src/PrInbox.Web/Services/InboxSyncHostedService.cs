@@ -68,7 +68,7 @@ public sealed class InboxSyncHostedService : BackgroundService
             _syncing = true;
             _log.LogInformation("Manual sync trigger accepted.");
             _state.NoteSync("Manual refresh started...");
-            _state.NoteSyncActivity("Manual refresh queued…");
+            _state.NoteSyncActivity("manual", null, "Manual refresh queued…");
             await RunSyncIterationAsync(ct);
             _log.LogInformation("Manual sync trigger completed.");
             return true;
@@ -76,7 +76,7 @@ public sealed class InboxSyncHostedService : BackgroundService
         finally
         {
             _syncing = false;
-            _state.NoteSyncActivity(null);
+            _state.NoteSyncActivity("manual", null, null);
             _syncGate.Release();
         }
     }
@@ -127,13 +127,13 @@ public sealed class InboxSyncHostedService : BackgroundService
         {
             _syncing = true;
             _state.NoteSync("Background sync started...");
-            _state.NoteSyncActivity("Background sync queued…");
+            _state.NoteSyncActivity("background", null, "Background sync queued…");
             await RunSyncIterationAsync(ct);
         }
         finally
         {
             _syncing = false;
-            _state.NoteSyncActivity(null);
+            _state.NoteSyncActivity("background", null, null);
             _syncGate.Release();
         }
     }
@@ -181,7 +181,7 @@ public sealed class InboxSyncHostedService : BackgroundService
             var drift = DriftInfo.Compute(pr, snap);
             tagsByUrl.TryGetValue(pr.Url, out var tags);
             rows.Add(InboxRow.FromRow(pr, open, bot, drift, likelyDone, tags, snap?.Files,
-                snap?.CiStatus, snap?.MergeableState, snap?.ReviewDecision));
+                snap?.CiStatus, snap?.MergeableState, snap?.ReviewDecision, hasSnapshot: snap is not null));
         }
         _state.ReplaceAll(rows);
         _log.LogDebug("Cache refresh completed (rows={RowCount}).", rows.Count);
@@ -241,16 +241,29 @@ public sealed class InboxSyncHostedService : BackgroundService
         // out of Task.WhenAll. We let the outer RunSyncIterationAsync
         // handle shutdown — we don't count a shutdown cancel as a source
         // failure.
-        var tasks = runtimes.Select(rt =>
-            RunOneFastAsync(
-                rt,
-                prRepo,
-                snapRepo,
-                threadRepo,
-                syncRunRepo,
-                new Progress<SyncProgress>(p => _state.NoteSyncActivity(FormatSyncActivity(p))),
-                _log,
-                ct));
+        var tasks = runtimes.Select(async rt =>
+        {
+            var key = SourceKey(rt);
+            try
+            {
+                return await RunOneFastAsync(
+                    rt,
+                    prRepo,
+                    snapRepo,
+                    threadRepo,
+                    syncRunRepo,
+                    new Progress<SyncProgress>(p => _state.NoteSyncActivity(key, p.PrUrl, FormatSyncActivity(p))),
+                    _log,
+                    ct);
+            }
+            finally
+            {
+                // Clear this source's row highlight regardless of how the
+                // task ended (ok, failed, or cancelled) so a stale
+                // "syncing" marker can never survive past this task.
+                _state.NoteSyncActivity(key, null, null);
+            }
+        });
         var results = await Task.WhenAll(tasks);
         return results.Sum();
     }
@@ -410,9 +423,10 @@ public sealed class InboxSyncHostedService : BackgroundService
         {
             if (ct.IsCancellationRequested) return failures;
             if (visible.Count == 0) continue;
+            var key = SourceKey(rt);
             try
             {
-                var progress = new Progress<SyncProgress>(p => _state.NoteSyncActivity(FormatSyncActivity(p)));
+                var progress = new Progress<SyncProgress>(p => _state.NoteSyncActivity(key, p.PrUrl, FormatSyncActivity(p)));
                 await orch.RunEnrichAsync(
                     rt.Identity, progress, ct,
                     precomputedCandidates: visible,
@@ -422,6 +436,10 @@ public sealed class InboxSyncHostedService : BackgroundService
             {
                 failures++;
                 _log.LogWarning(ex, "Visible-pass enrich of {SourceId} failed", rt.Source.SourceId);
+            }
+            finally
+            {
+                _state.NoteSyncActivity(key, null, null);
             }
         }
 
@@ -460,9 +478,10 @@ public sealed class InboxSyncHostedService : BackgroundService
         {
             if (ct.IsCancellationRequested) return failures;
             if (hidden.Count == 0) continue;
+            var key = SourceKey(rt);
             try
             {
-                var progress = new Progress<SyncProgress>(p => _state.NoteSyncActivity(FormatSyncActivity(p)));
+                var progress = new Progress<SyncProgress>(p => _state.NoteSyncActivity(key, p.PrUrl, FormatSyncActivity(p)));
                 await orch.RunEnrichAsync(
                     rt.Identity, progress, ct,
                     precomputedCandidates: hidden,
@@ -472,6 +491,10 @@ public sealed class InboxSyncHostedService : BackgroundService
             {
                 failures++;
                 _log.LogWarning(ex, "Background-pass enrich of {SourceId} failed", rt.Source.SourceId);
+            }
+            finally
+            {
+                _state.NoteSyncActivity(key, null, null);
             }
         }
 
@@ -566,7 +589,8 @@ public sealed class InboxSyncHostedService : BackgroundService
                     var snap = await snapRepo.GetLatestAsync(fresh.Identity, ct);
                     var drift = DriftInfo.Compute(fresh, snap);
                     var tags = await tagRepo.GetTagsForPrAsync(fresh.Url, ct);
-                    _state.Upsert(InboxRow.FromRow(fresh, open, bot, drift, likelyDone, tags, snap?.Files));
+                    _state.Upsert(InboxRow.FromRow(fresh, open, bot, drift, likelyDone, tags, snap?.Files,
+                        hasSnapshot: snap is not null));
                 }
             }
             catch (Exception ex)
@@ -617,6 +641,14 @@ public sealed class InboxSyncHostedService : BackgroundService
             : progress.Message.Trim();
         return $"Syncing {message} · {progress.SourceId}";
     }
+
+    /// <summary>
+    /// Stable per-source-runtime key used to key <see cref="InboxState"/>'s
+    /// active-sync map. One key per (source, identity) binding — fast-sync
+    /// runs one task per runtime concurrently, so each needs its own slot
+    /// that can be set/cleared independently of every other source's.
+    /// </summary>
+    private static string SourceKey(RuntimeSource rt) => $"{rt.Source.SourceId}::{rt.Identity}";
 
     private static (PullRequestRepository prRepo, ObservedThreadRepository threadRepo) OpenRepos()
     {

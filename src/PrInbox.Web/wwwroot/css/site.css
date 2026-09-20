@@ -212,6 +212,10 @@ button.refresh {
 button.refresh:hover:not([disabled]) { background: rgba(93,164,255,0.12); }
 button.refresh[disabled] { opacity: 0.5; cursor: default; }
 
+/* Row-level "syncing" indicator shown in place of the relative last-sync
+   time inside a PR row's Last sync cell while that specific PR is actively
+   being fast-synced or enriched. (Previously rendered as a single global
+   message in the toolbar — moved onto the row it actually describes.) */
 .sync-indicator {
     display: inline-flex;
     align-items: center;
@@ -252,7 +256,8 @@ button.review {
     font-size: 0.85rem;
     cursor: pointer;
 }
-button.review:hover { background: rgba(93,164,255,0.12); }
+button.review:hover:not([disabled]) { background: rgba(93,164,255,0.12); }
+button.review[disabled] { opacity: 0.5; cursor: default; }
 
 .findings-counts > span,
 .findings-counts > a {
@@ -858,6 +863,53 @@ tr.row-just-returned > td { animation: returnPulse 2.2s ease-out; }
 
 tr.row-hidden { opacity: 0.55; }
 tr.row-hidden td.title { font-style: italic; }
+
+/* Four-state row lifecycle coloring (subtle tint + left accent border),
+   applied by PrRowSyncStateResolver so Inbox and My PRs stay identical.
+   Text/tooltips carry the same meaning so color is never the only signal.
+   Composes with row-hidden / row-disappeared, which only touch opacity. */
+tr.row-sync-running > td {
+    background: rgba(245, 158, 11, 0.10);
+    box-shadow: inset 3px 0 0 0 #f59e0b;
+}
+tr.row-sync-ready > td {
+    background: rgba(46, 107, 79, 0.16);
+    box-shadow: inset 3px 0 0 0 #2e6b4f;
+}
+tr.row-sync-basic > td {
+    background: rgba(93, 164, 255, 0.08);
+    box-shadow: inset 3px 0 0 0 var(--accent);
+}
+tr.row-sync-pending > td {
+    background: rgba(139, 141, 147, 0.08);
+    box-shadow: inset 3px 0 0 0 var(--muted);
+}
+
+/* Compact legend decoding the four row states, shown near table controls. */
+.row-state-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.9rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+    flex-wrap: wrap;
+}
+.row-state-legend .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.row-state-legend .legend-swatch {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 2px;
+    display: inline-block;
+}
+.row-state-legend .legend-swatch.running   { background: #f59e0b; }
+.row-state-legend .legend-swatch.ready     { background: #2e6b4f; }
+.row-state-legend .legend-swatch.basic     { background: var(--accent); }
+.row-state-legend .legend-swatch.pending   { background: var(--muted); }
+
 
 /* Draft PRs: a small muted "draft" marker + italic title. Full opacity, so
    they stay distinct from the opacity-dimmed disappeared / hidden rows; the

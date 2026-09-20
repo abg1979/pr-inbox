@@ -62,7 +62,8 @@ public sealed record InboxRow(
     string? CiStatus = null,
     string? MergeableState = null,
     string? ReviewDecision = null,
-    bool IsDraft = false)
+    bool IsDraft = false,
+    bool HasSnapshot = false)
 {
     /// <summary>
     /// True when the user has flagged this PR as "of interest." Flag is
@@ -123,7 +124,8 @@ public sealed record InboxRow(
         IReadOnlyList<SnapshotFileChange>? snapshotFiles = null,
         string? ciStatus = null,
         string? mergeableState = null,
-        string? reviewDecision = null)
+        string? reviewDecision = null,
+        bool hasSnapshot = false)
     {
         drift ??= DriftInfo.Unknown;
         var (touchedPaths, touchedState) = ClassifyTouchedPaths(row.EnrichState, snapshotFiles);
@@ -160,7 +162,8 @@ public sealed record InboxRow(
             ciStatus,
             mergeableState,
             reviewDecision,
-            row.IsDraft);
+            row.IsDraft,
+            hasSnapshot);
     }
 
     /// <summary>
@@ -214,9 +217,9 @@ public sealed class InboxState
 {
     private readonly object _lock = new();
     private readonly Dictionary<string, InboxRow> _rows = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (string? PrUrl, string Label)> _activeSyncByKey = new(StringComparer.Ordinal);
     private DateTimeOffset? _lastSyncUtc;
     private string? _lastSyncMessage;
-    private string? _currentSyncActivity;
 
     /// <summary>Raised whenever rows change or a sync milestone occurs.</summary>
     public event Action? Changed;
@@ -242,15 +245,6 @@ public sealed class InboxState
     public string? LastSyncMessage
     {
         get { lock (_lock) return _lastSyncMessage; }
-    }
-
-    /// <summary>
-    /// Live in-flight sync activity label (for example:
-    /// "Syncing #123 org/repo · gh.com:emu"). Null when idle.
-    /// </summary>
-    public string? CurrentSyncActivity
-    {
-        get { lock (_lock) return _currentSyncActivity; }
     }
 
     public void ReplaceAll(IEnumerable<InboxRow> rows)
@@ -282,13 +276,57 @@ public sealed class InboxState
         RaiseChanged();
     }
 
-    public void NoteSyncActivity(string? activity)
+    /// <summary>
+    /// Records (or clears) the in-flight sync activity for one concurrently
+    /// running sync task, identified by <paramref name="sourceKey"/> (stable
+    /// per source+identity — see <see cref="InboxSyncHostedService"/>).
+    /// Multiple keys can be active at once (parallel fast-sync fan-out), each
+    /// tracked independently so one source's progress can never clobber
+    /// another's row highlight.
+    /// </summary>
+    /// <param name="sourceKey">Stable identifier for the running task.</param>
+    /// <param name="prUrl">
+    /// The pull request this activity is about, or <c>null</c> for
+    /// phase-level activity (e.g. "Fetching inbox") that isn't tied to a
+    /// specific row.
+    /// </param>
+    /// <param name="label">
+    /// Human-readable activity label, or <c>null</c> to clear this key
+    /// entirely (the task finished/failed/was cancelled).
+    /// </param>
+    public void NoteSyncActivity(string sourceKey, string? prUrl, string? label)
     {
         lock (_lock)
         {
-            _currentSyncActivity = activity;
+            if (label is null)
+            {
+                _activeSyncByKey.Remove(sourceKey);
+            }
+            else
+            {
+                _activeSyncByKey[sourceKey] = (prUrl, label);
+            }
         }
         RaiseChanged();
+    }
+
+    /// <summary>
+    /// Returns the active sync label for the given PR URL, or <c>null</c> if
+    /// no currently-running sync task is actively processing that PR. Used
+    /// by the Inbox/My PRs tables to render a live "syncing" state in a
+    /// row's Last sync cell instead of a detached toolbar message.
+    /// </summary>
+    public string? GetActiveRowActivity(string prUrl)
+    {
+        lock (_lock)
+        {
+            foreach (var (url, label) in _activeSyncByKey.Values)
+            {
+                if (url is not null && string.Equals(url, prUrl, StringComparison.OrdinalIgnoreCase))
+                    return label;
+            }
+            return null;
+        }
     }
 
     private void RaiseChanged()

@@ -27,10 +27,6 @@
 <div class="toolbar">
     <span class="muted">@RowCountLabel</span>
     <span class="muted">@LastSyncLabel</span>
-    @if (IsSyncing)
-    {
-        <span class="sync-indicator" role="status" aria-live="polite">@SyncIndicatorLabel</span>
-    }
     <button class="refresh" @onclick="OnRefreshAsync" disabled="@IsSyncing">
         @(_refreshing ? "Refreshing..." : "Refresh")
     </button>
@@ -294,6 +290,12 @@ else if (consoles.Count > 0)
 }
 else
 {
+    <div class="row-state-legend" role="note" aria-label="Row color legend">
+        <span class="legend-item"><span class="legend-swatch running"></span>Syncing now</span>
+        <span class="legend-item"><span class="legend-swatch ready"></span>Review ready</span>
+        <span class="legend-item"><span class="legend-swatch basic"></span>Basic sync complete</span>
+        <span class="legend-item"><span class="legend-swatch pending"></span>Sync pending</span>
+    </div>
     <table class="pr-table">
         <thead>
             <tr>
@@ -329,7 +331,7 @@ else
                 }
                 @foreach (var row in group.rows)
                 {
-                <tr class="@RowClasses(row)" data-pr-url="@row.Url">
+                <tr class="@RowClasses(row)" data-pr-url="@row.Url" title="@PrRowSyncStateResolver.Label(RowSyncState(row))">
                     <td><span class="badge @SourceClass(row)">@SourceLabel(row)</span></td>
                     <td>
                         <button type="button"
@@ -469,11 +471,23 @@ else
                         }
                     </td>
                     <td class="age muted" title="@AgeTooltip(row.UpstreamCreatedAt)">@AgeLabel(row.UpstreamCreatedAt)</td>
-                    <td class="muted" title="@EnrichTooltip(row.EnrichState)">
-                        @RelativeTime(row.LastSyncedAt)
-                        @if (row.EnrichState != EnrichState.Enriched)
+                    <td class="muted">
+                        @{
+                            var rowActivity = State.GetActiveRowActivity(row.Url);
+                        }
+                        @if (rowActivity is not null)
                         {
-                            <span class="enrich-suffix"> · @row.EnrichState.ToString().ToLowerInvariant()</span>
+                            <span class="sync-indicator" role="status" aria-live="polite" title="@rowActivity">syncing</span>
+                        }
+                        else
+                        {
+                            <span title="@EnrichTooltip(row.EnrichState)">
+                                @RelativeTime(row.LastSyncedAt)
+                                @if (row.EnrichState != EnrichState.Enriched)
+                                {
+                                    <span class="enrich-suffix"> · @row.EnrichState.ToString().ToLowerInvariant()</span>
+                                }
+                            </span>
                         }
                     </td>
                     <td>
@@ -573,7 +587,9 @@ else
                         }
                     </td>
                     <td class="row-actions">
-                        <button class="review" @onclick="() => OnReviewAsync(row)">Review</button>
+                        <button class="review" disabled="@(!PrRowSyncStateResolver.ReviewEnabled(RowSyncState(row)))"
+                                title="@PrRowSyncStateResolver.ReviewTooltip(RowSyncState(row))"
+                                @onclick="() => OnReviewAsync(row)">Review</button>
                         <button class="done"
                                 title="@(row.IsMarkedDone ? "Bring this PR back to the inbox" : "Mark this PR as done. It will hide until the author pushes a new commit.")"
                                 @onclick="() => OnToggleDoneAsync(row)">
@@ -738,7 +754,6 @@ else
 
     private string LastSyncLabel => State.LastSyncMessage ?? "Loading...";
     private bool IsSyncing => _refreshing || Sync.IsSyncing;
-    private string SyncIndicatorLabel => State.CurrentSyncActivity ?? "Sync in progress…";
 
     private bool IsSourceEnabled(string sourceClass) => _enabledSources.Contains(sourceClass);
 
@@ -757,15 +772,30 @@ else
         row.IsIgnored || RowMatchesIgnoredRepoRegex(row);
 
     /// <summary>
+    /// Resolves the shared four-state sync/readiness lifecycle for a row,
+    /// used both for row tinting and for gating the Review button.
+    /// </summary>
+    private PrRowSyncState RowSyncState(InboxRow row) =>
+        PrRowSyncStateResolver.Resolve(
+            State.GetActiveRowActivity(row.Url) is not null,
+            row.EnrichState,
+            row.HasSnapshot);
+
+    /// <summary>
     /// Combines row-level state into the CSS class list. Ignored / hidden
     /// rows are dimmed and italicized; rows the user has been de-assigned
-    /// from get a subtler demotion that keeps them legible.
+    /// from get a subtler demotion that keeps them legible. The sync/
+    /// readiness class is appended so it composes with either of those.
     /// </summary>
     private string RowClasses(InboxRow row)
     {
-        if (RowIsHidden(row)) return "row-hidden";
-        if (row.DisappearedAt is not null && row.Status == PullRequestStatus.Open) return "row-disappeared";
-        return "";
+        var baseClass = RowIsHidden(row)
+            ? "row-hidden"
+            : row.DisappearedAt is not null && row.Status == PullRequestStatus.Open
+                ? "row-disappeared"
+                : "";
+        var syncClass = PrRowSyncStateResolver.CssClass(RowSyncState(row));
+        return string.IsNullOrEmpty(baseClass) ? syncClass : $"{baseClass} {syncClass}";
     }
 
     /// <summary>
@@ -1725,6 +1755,13 @@ else
 
     private async Task OnReviewAsync(InboxRow row)
     {
+        // Defensive guard: a disabled button shouldn't be clickable, but a
+        // stale/racing event (e.g. the row's state changed between render
+        // and click) must not be allowed to launch review early.
+        if (!PrRowSyncStateResolver.ReviewEnabled(RowSyncState(row)))
+        {
+            return;
+        }
         try
         {
             _lastLaunchMessage = await Launcher.LaunchAsync(row.Url, CancellationToken.None);

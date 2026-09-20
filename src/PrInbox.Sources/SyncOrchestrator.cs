@@ -101,7 +101,7 @@ public sealed class SyncOrchestrator
                 ct.ThrowIfCancellationRequested();
                 seenIdentities.Add(pr.Identity.Url);
                 reviewerSeen.Add(pr.Identity.Url);
-                progress?.Report(new SyncProgress(_source.SourceId, $"#{pr.Number} {pr.DisplayRepo}", prsSeen, null));
+                progress?.Report(new SyncProgress(_source.SourceId, $"#{pr.Number} {pr.DisplayRepo}", prsSeen, null, pr.Identity.Url));
 
                 try
                 {
@@ -130,7 +130,7 @@ public sealed class SyncOrchestrator
                 {
                     ct.ThrowIfCancellationRequested();
                     seenIdentities.Add(pr.Identity.Url);
-                    progress?.Report(new SyncProgress(_source.SourceId, $"#{pr.Number} {pr.DisplayRepo}", prsSeen, null));
+                    progress?.Report(new SyncProgress(_source.SourceId, $"#{pr.Number} {pr.DisplayRepo}", prsSeen, null, pr.Identity.Url));
 
                     try
                     {
@@ -322,7 +322,7 @@ public sealed class SyncOrchestrator
             foreach (var row in candidates)
             {
                 ct.ThrowIfCancellationRequested();
-                progress?.Report(new SyncProgress(_source.SourceId, $"#{row.Number} {row.DisplayRepo}", prsSeen, candidates.Count));
+                progress?.Report(new SyncProgress(_source.SourceId, $"#{row.Number} {row.DisplayRepo}", prsSeen, candidates.Count, row.Identity.Url));
 
                 try
                 {
@@ -581,7 +581,13 @@ public sealed class SyncOrchestrator
     }
 }
 
-public sealed record SyncProgress(string SourceId, string Message, int PrsSeen, int? PrsTotal);
+/// <summary>
+/// <paramref name="PrUrl"/> is non-null only for events tied to a specific
+/// pull request (a fast-listed row or an enrichment candidate); phase-level
+/// events (e.g. "Fetching inbox", "Enriching: N PR(s)") leave it null so
+/// callers don't mistakenly highlight an arbitrary row for source-level work.
+/// </summary>
+public sealed record SyncProgress(string SourceId, string Message, int PrsSeen, int? PrsTotal, string? PrUrl = null);
 
 /// <summary>
 /// Outcome of a single sync run. <see cref="SeenUrls"/> is populated only

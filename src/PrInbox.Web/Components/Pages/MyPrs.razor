@@ -16,10 +16,6 @@
 <div class="toolbar">
     <span class="muted">@RowCountLabel</span>
     <span class="muted">@LastSyncLabel</span>
-    @if (IsSyncing)
-    {
-        <span class="sync-indicator" role="status" aria-live="polite">@SyncIndicatorLabel</span>
-    }
     <button class="refresh" @onclick="OnRefreshAsync" disabled="@IsSyncing">
         @(_refreshing ? "Refreshing..." : "Refresh")
     </button>
@@ -63,6 +59,12 @@
 }
 else
 {
+    <div class="row-state-legend" role="note" aria-label="Row color legend">
+        <span class="legend-item"><span class="legend-swatch running"></span>Syncing now</span>
+        <span class="legend-item"><span class="legend-swatch ready"></span>Review ready</span>
+        <span class="legend-item"><span class="legend-swatch basic"></span>Basic sync complete</span>
+        <span class="legend-item"><span class="legend-swatch pending"></span>Sync pending</span>
+    </div>
     <table class="pr-table">
         <thead>
             <tr>
@@ -81,7 +83,7 @@ else
         <tbody>
             @foreach (var row in _rows)
             {
-                <tr data-pr-url="@row.Url">
+                <tr class="@RowSyncClass(row)" data-pr-url="@row.Url" title="@PrRowSyncStateResolver.Label(RowSyncState(row))">
                     <td><span class="badge @SourceClass(row)">@SourceLabel(row)</span></td>
                     <td>
                         <a href="@row.Url" target="_blank" rel="noopener">
@@ -118,10 +120,24 @@ else
                         else { <span class="muted">@(row.EnrichState == EnrichState.Enriched ? "–" : "…")</span> }
                     </td>
                     <td>
-                        <button class="review" @onclick="() => OnReviewAsync(row)">Review</button>
+                        <button class="review" disabled="@(!PrRowSyncStateResolver.ReviewEnabled(RowSyncState(row)))"
+                                title="@PrRowSyncStateResolver.ReviewTooltip(RowSyncState(row))"
+                                @onclick="() => OnReviewAsync(row)">Review</button>
                     </td>
                     <td title="@AgeTooltip(row.UpstreamCreatedAt)">@AgeLabel(row.UpstreamCreatedAt)</td>
-                    <td>@RelativeTime(row.LastSyncedAt)</td>
+                    <td>
+                        @{
+                            var rowActivity = State.GetActiveRowActivity(row.Url);
+                        }
+                        @if (rowActivity is not null)
+                        {
+                            <span class="sync-indicator" role="status" aria-live="polite" title="@rowActivity">syncing</span>
+                        }
+                        else
+                        {
+                            @RelativeTime(row.LastSyncedAt)
+                        }
+                    </td>
                 </tr>
             }
         </tbody>
@@ -233,7 +249,6 @@ else
     }
 
     private bool IsSyncing => _refreshing || Sync.IsSyncing;
-    private string SyncIndicatorLabel => State.CurrentSyncActivity ?? "Sync in progress…";
 
     private async Task OnRefreshAsync()
     {
@@ -263,6 +278,12 @@ else
 
     private async Task OnReviewAsync(InboxRow row)
     {
+        // Defensive guard: a disabled button shouldn't be clickable, but a
+        // stale/racing event must not be allowed to launch review early.
+        if (!PrRowSyncStateResolver.ReviewEnabled(RowSyncState(row)))
+        {
+            return;
+        }
         try
         {
             _lastLaunchMessage = await Launcher.LaunchAsync(row.Url, CancellationToken.None);
@@ -273,6 +294,19 @@ else
             _lastLaunchMessage = $"Launcher error: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// Resolves the shared four-state sync/readiness lifecycle for a row,
+    /// used both for row tinting and for gating the Review button.
+    /// </summary>
+    private PrRowSyncState RowSyncState(InboxRow row) =>
+        PrRowSyncStateResolver.Resolve(
+            State.GetActiveRowActivity(row.Url) is not null,
+            row.EnrichState,
+            row.HasSnapshot);
+
+    private string RowSyncClass(InboxRow row) =>
+        PrRowSyncStateResolver.CssClass(RowSyncState(row));
 
     private string SourceLabel(InboxRow row)
     {
