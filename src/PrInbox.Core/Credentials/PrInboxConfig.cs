@@ -238,7 +238,7 @@ public sealed class ReviewLauncherSettings
     public string Plugin { get; init; } = "market:dual-review@jmprieur/pr-inbox";
 
     /// <summary>Model id substituted into the <c>{model}</c> placeholder.</summary>
-    public string Model { get; set; } = "gpt-5.6-sol";
+    public string Model { get; set; } = "gpt-6-sol";
 
     /// <summary>Agent id substituted into the <c>{agent}</c> placeholder.</summary>
     public string Agent { get; init; } = "dual-review:dual-model-review";

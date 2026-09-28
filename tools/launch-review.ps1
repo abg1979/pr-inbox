@@ -50,7 +50,7 @@
 
 .PARAMETER Model
     Value substituted into the {model} placeholder. Defaults to
-    gpt-5.6-sol.
+    gpt-6-sol.
 
 .PARAMETER SessionName
     Optional human-readable name for the underlying copilot session.
@@ -87,7 +87,7 @@ param(
 
 if (-not $Agent)  { $Agent  = 'dual-review:dual-model-review' }
 if (-not $Plugin) { $Plugin = 'market:dual-review@jmprieur/pr-inbox' }
-if (-not $Model)  { $Model  = 'gpt-5.6-sol' }
+if (-not $Model)  { $Model  = 'gpt-6-sol' }
 # Default launch command targets the public GitHub Copilot CLI, which loads
 # the plugin from a local directory. Microsoft users set PRINBOX_REVIEW_COMMAND
 # (or the Settings field) to e.g.

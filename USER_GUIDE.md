@@ -36,7 +36,8 @@
 
 `pr-inbox` is a personal harness for reviewing many PRs at scale across
 **GitHub.com**, **GitHub Enterprise**, and **Azure DevOps**. It does not
-review code — `dual-model-review` (Opus + GPT) does that. `pr-inbox`'s job
+review code — `dual-model-review` (Claude Opus 5.5 + GPT-6 Sol by default)
+does that. `pr-inbox`'s job
 is to tell you **which** PRs to look at, **what changed** since you last
 looked, hand a fully-bootstrapped brief to a Copilot tab, and remember
 what you did. Two surfaces: the **Web UI** (Blazor, the daily driver) and
@@ -623,9 +624,9 @@ Persisted settings that take effect on the **next** review you launch
 | **Tab colour** | Colours the Windows Terminal tab for every review so it stands out from ordinary terminals. Accepts a hex like `#5da4ff`; leave blank to disable. |
 | **One tab per review** *(experimental)* | On: each review opens as a tab in one shared window (`pr-inbox-reviews`) instead of its own window — less desktop clutter when several run at once. Trade-off: the Inbox's per-review window controls don't apply in tab mode, and closing the shared window closes every review tab. Off (default): one window per review. |
 
-The review orchestrator model defaults to `gpt-5.6-sol`. This is distinct
-from the independent reviewer pair, which defaults to `claude-opus-4.8`
-and `gpt-5.6-terra`.
+The review orchestrator model defaults to `gpt-6-sol`. This is distinct
+from the independent reviewer pair, which defaults to `claude-opus-5.5`
+and `gpt-6-sol`.
 
 If you need fancier overrides (different model, different plugin),
 use the env vars in [§ Review launcher overrides](README.md#review-launcher-overrides).
@@ -756,7 +757,7 @@ from the CLI, the same seven steps run:
    - Your open threads with status
    - Recent bot comments (Copilot review, Copilot coding agent) since
      the last brief
-   - Standard `dual-model-review` invocation block (Opus 5 + GPT 5.6 Sol,
+   - Standard `dual-model-review` invocation block (Claude Opus 5.5 + GPT-6 Sol,
     asymmetry instructions, `do NOT post`, `diff_anchorable` flag,
     95%+ inline filter)
    - Staleness clause ("verify PR HEAD is still `<sha>` before posting")

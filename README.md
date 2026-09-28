@@ -24,7 +24,7 @@ will run the actual `dual-model-review`.
 
 Reviewing many PRs at scale across three platforms with two identities is
 manual. The pain is not the review skill itself — that's mature
-(`dual-model-review` with Opus 5 + GPT 5.6 Sol, asymmetry pattern stable at N=6).
+(`dual-model-review` with Claude Opus 5.5 + GPT-6 Sol, asymmetry pattern stable at N=6).
 The pain is:
 
 | Pain | What `pr-inbox` does about it |
@@ -257,7 +257,7 @@ when launching from the web UI):
 | `PRINBOX_REVIEW_COMMAND` | `copilot --plugin-dir {plugindir} --model {model} --agent {agent}` | Launch command template (owns the CLI + flag syntax) |
 | `PRINBOX_REVIEW_AGENT` | `dual-review:dual-model-review` | Value for the `{agent}` placeholder |
 | `PRINBOX_REVIEW_PLUGIN` | `market:dual-review@jmprieur/pr-inbox` | Value for the `{plugin}` placeholder (agency marketplace spec) |
-| `PRINBOX_REVIEW_MODEL` | `gpt-5.6-sol` | Value for the `{model}` placeholder (the review orchestrator) |
+| `PRINBOX_REVIEW_MODEL` | `gpt-6-sol` | Value for the `{model}` placeholder (the review orchestrator) |
 | `PRINBOX_PLUGIN_DIR` | _(auto-resolved)_ | Overrides the `{plugindir}` path (bundled `plugins/dual-review`) |
 
 ### Platform-specific launcher overrides

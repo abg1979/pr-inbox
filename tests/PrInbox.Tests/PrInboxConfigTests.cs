@@ -15,7 +15,7 @@ public class PrInboxConfigTests
         config.Sources.Should().BeEmpty();
         config.Ado.Projects.Should().BeEmpty();
         config.Bots.ExtraLogins.Should().BeEmpty();
-        config.ReviewLauncher.Model.Should().Be("gpt-5.6-sol");
+        config.ReviewLauncher.Model.Should().Be("gpt-6-sol");
         config.ReviewLauncher.AllowAllPaths.Should().BeFalse();
     }
 
