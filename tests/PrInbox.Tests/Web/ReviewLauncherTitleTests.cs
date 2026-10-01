@@ -91,6 +91,80 @@ public class ReviewLauncherTitleTests
     }
 
     [Theory]
+    [InlineData("gnome-terminal", "--tab --title=")]
+    [InlineData("konsole", "--new-tab --workdir")]
+    [InlineData("xfce4-terminal", "--tab --title")]
+    public void BuildLinuxTerminalArgs_TabMode_UsesHostTabOption(string terminal, string expectedPrefix)
+    {
+        var args = ReviewLauncher.BuildLinuxTerminalArgs(terminal, true, "review #7", "/tmp/review", "copilot");
+        args.Should().StartWith(expectedPrefix);
+        args.Should().Contain("copilot");
+        ReviewLauncher.BuildLinuxTerminalArgs(terminal, false, "review #7", "/tmp/review", "copilot")
+            .Should().NotStartWith("--tab ").And.NotStartWith("--new-tab ");
+    }
+
+    [Fact]
+    public void BuildMacOsTabScript_Terminal_UsesDedicatedWindowAndNewTabWithoutReusingAnActiveSession()
+    {
+        var script = ReviewLauncher.BuildMacOsTabScript("/tmp/O'Brien", "review #7", "copilot -i \"go\"", iterm: false);
+        script.Should().Contain("custom title of t");
+        script.Should().Contain("keystroke \"t\" using command down");
+        script.Should().Contain("if (count of tabs of reviewWindow) is oldTabCount then error");
+        script.Should().Contain("do script \"cd '/tmp/O'\\\\''Brien'");
+        script.Should().Contain("in reviewTab");
+        script.Should().Contain("set custom title of reviewTab to \"pr-inbox-reviews review #7\"");
+        script.Should().Contain("\\\"go\\\"");
+    }
+
+    [Fact]
+    public void BuildMacOsTabScript_ITerm_TracksReviewSessionsAcrossLaunches()
+    {
+        var script = ReviewLauncher.BuildMacOsTabScript("/tmp/review", "review #7", "copilot", iterm: true);
+        script.Should().Contain("if (variable \"user.prInboxReviews\") is \"1\"");
+        script.Should().Contain("create tab with default profile");
+        script.Should().Contain("set variable named \"user.prInboxReviews\" to \"1\"");
+        script.Should().Contain("write text \"cd '/tmp/review'; copilot\"");
+        script.Should().NotContain("System Events");
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public void BuildMacOsLaunchScripts_CompileOnMacOs(bool iterm, bool tab)
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        if (iterm && !Directory.Exists("/Applications/iTerm.app")) return;
+        var output = Path.Combine(Path.GetTempPath(), $"pr-inbox-{Guid.NewGuid():N}.scpt");
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("osacompile")
+            {
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            };
+            psi.ArgumentList.Add("-o");
+            psi.ArgumentList.Add(output);
+            psi.ArgumentList.Add("-e");
+            var script = tab
+                ? ReviewLauncher.BuildMacOsTabScript("/tmp/O'Brien", "review #7", "copilot -i \"go\"", iterm)
+                : iterm
+                    ? ReviewLauncher.BuildMacOsITermWindowScript("/tmp/O'Brien", "copilot -i \"go\"")
+                    : ReviewLauncher.BuildMacOsWindowScript("/tmp/O'Brien", "copilot -i \"go\"");
+            psi.ArgumentList.Add(script);
+            using var process = System.Diagnostics.Process.Start(psi)!;
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            process.ExitCode.Should().Be(0, error);
+        }
+        finally
+        {
+            if (File.Exists(output)) File.Delete(output);
+        }
+    }
+
+    [Theory]
     [InlineData(true, false, false, "")]
     [InlineData(false, false, false, " -NoAutoSend")]
     [InlineData(true, true, false, " -AllowAllPaths")]

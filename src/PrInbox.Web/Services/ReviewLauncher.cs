@@ -9,13 +9,13 @@ using PrInbox.Core.Storage;
 namespace PrInbox.Web.Services;
 
 /// <summary>
-/// Abstraction over launching a dual-model-review session in a new
-/// console window for a given PR.
+/// Abstraction over launching a dual-model-review session in a
+/// terminal window or tab for a given PR.
 /// </summary>
 public interface IReviewLauncher
 {
     /// <summary>
-    /// Build the brief, start a console window, and attach a watcher
+    /// Build the brief, start a console session, and attach a watcher
     /// for the resulting <c>findings.yaml</c>.
     /// </summary>
     /// <returns>A short user-visible message describing what happened.</returns>
@@ -26,7 +26,7 @@ public interface IReviewLauncher
 /// Production review launcher.
 /// <list type="number">
 ///   <item>Calls <see cref="BriefService"/> to generate brief.md + metadata + review_runs row.</item>
-///   <item>Spawns a new Windows Terminal window running <c>launch-review.ps1</c>
+///   <item>Spawns a terminal window or tab running the configured review CLI
 ///         with the run directory.</item>
 ///   <item>Starts a <see cref="FindingsWatcher"/> on the run dir so the
 ///         inbox lights up the moment <c>findings.yaml</c> appears.</item>
@@ -42,6 +42,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
     private readonly PrInboxConfig _config;
     private readonly ConsoleWindowRegistry _consoles;
     private readonly ConcurrentDictionary<string, FindingsWatcher> _watchers = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _macLaunchLock = new(1, 1);
 
     public ReviewLauncher(ReviewRunStore runs, ILogger<ReviewLauncher> log, ILoggerFactory logFactory,
         PrInboxConfig config, ConsoleWindowRegistry consoles)
@@ -73,7 +74,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         _log.LogInformation("Review brief created (runId={RunId}, runDir={RunDir}, headSha={HeadSha}).",
             brief.RunId, brief.RunDirectory, brief.HeadSha);
 
-        // Build a "<repo> #<number> @<short-sha> <HH:mm>" title for the wt
+        // Build a "<repo> #<number> @<short-sha> <HH:mm>" title for the terminal
         // tab and the underlying agent's session name. Including the short
         // HEAD SHA *and* a minute-resolution timestamp guarantees each launch
         // claims a fresh copilot session — without the timestamp, copilot
@@ -98,10 +99,18 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         }
 
         StartWatcher(brief.PrUrl, brief.RunDirectory, brief.RunId, brief.HeadSha);
-        SpawnConsole(brief.RunDirectory, tabTitle, brief.RunId);
+        var location = await SpawnConsoleAsync(brief.RunDirectory, tabTitle, brief.RunId);
+        if (location == ConsoleLocation.Failed)
+            return $"Review run #{brief.RunId} was prepared, but its terminal could not be opened. Check the application log.";
         _log.LogInformation("Review launch completed for {Url} (runId={RunId}).", brief.PrUrl, brief.RunId);
 
-        return $"Review run #{brief.RunId} opened in a new window. Findings will land in {Path.Combine(brief.RunDirectory, "findings.yaml")}.";
+        var description = location switch
+        {
+            ConsoleLocation.Tab => "a tab in the shared terminal window",
+            ConsoleLocation.FallbackWindow => "a separate window (tab grouping was unavailable; see the application log)",
+            _ => "a new window",
+        };
+        return $"Review run #{brief.RunId} opened in {description}. Findings will land in {Path.Combine(brief.RunDirectory, "findings.yaml")}.";
     }
 
     /// <summary>
@@ -300,7 +309,9 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         _log.LogDebug("Review watcher active (url={Url}, runId={RunId}).", prUrl, runId);
     }
 
-    private void SpawnConsole(string runDir, string tabTitle, long runId)
+    private enum ConsoleLocation { Failed, Window, Tab, FallbackWindow }
+
+    private async Task<ConsoleLocation> SpawnConsoleAsync(string runDir, string tabTitle, long runId)
     {
         var rl = _config.ReviewLauncher;
         var pluginDir = FindPluginDir();
@@ -324,23 +335,22 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
 
         try
         {
-            var started = resolved.Platform switch
+            var location = resolved.Platform switch
             {
                 PlatformKind.Windows => StartWindowsConsole(
                     runDir, safeTitle, tabColorArg, launchCommand, rl.TabPerReview,
                     msg => _log.LogInformation("{Message}", msg)),
-                PlatformKind.MacOS => StartMacOsConsole(
-                    runDir, safeTitle, launchCommand, resolved,
+                PlatformKind.MacOS => await StartMacOsConsoleAsync(
+                    runDir, safeTitle, launchCommand, resolved, rl.TabPerReview,
                     msg => _log.LogInformation("{Message}", msg)),
-                _ => StartLinuxConsole(
-                    runDir, safeTitle, launchCommand, resolved,
+                _ => StartLinuxConsole(runDir, safeTitle, launchCommand, resolved, rl.TabPerReview,
                     msg => _log.LogInformation("{Message}", msg)),
             };
 
-            if (!started)
+            if (location == ConsoleLocation.Failed)
             {
                 _log.LogError("Failed to spawn review console for {RunDir}; launcher configuration is invalid.", runDir);
-                return;
+                return ConsoleLocation.Failed;
             }
 
             _log.LogDebug("Review console process launch dispatched (runId={RunId}, platform={Platform}).", runId, resolved.Platform);
@@ -349,10 +359,12 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
             {
                 _consoles.RegisterInBackground(runId, humanTitle);
             }
+            return location;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Failed to spawn review console for {RunDir}", runDir);
+            return ConsoleLocation.Failed;
         }
     }
 
@@ -420,7 +432,7 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
         return null;
     }
 
-    private static bool StartWindowsConsole(string runDir, string safeTitle, string tabColorArg, string command, bool tabPerReview, Action<string>? logCommand = null)
+    private ConsoleLocation StartWindowsConsole(string runDir, string safeTitle, string tabColorArg, string command, bool tabPerReview, Action<string>? logCommand = null)
     {
         var wt = ResolveOnPath("wt.exe");
         if (wt is not null)
@@ -433,9 +445,10 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
                 Arguments = args,
                 UseShellExecute = true,
             });
-            return true;
+            return tabPerReview ? ConsoleLocation.Tab : ConsoleLocation.Window;
         }
 
+        if (tabPerReview) _log.LogWarning("Windows Terminal was not found; opening a separate PowerShell window.");
         var encoded = EncodeForPowerShellCommand(command);
         var fallbackArgs = $"/c start \"{safeTitle}\" pwsh -NoExit -EncodedCommand {encoded}";
         logCommand?.Invoke($"Launching fallback terminal command: cmd.exe {fallbackArgs}");
@@ -445,60 +458,175 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
             Arguments = fallbackArgs,
             UseShellExecute = true,
         });
-        return true;
+        return tabPerReview ? ConsoleLocation.FallbackWindow : ConsoleLocation.Window;
     }
 
-    private static bool StartMacOsConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved, Action<string>? logCommand = null)
+    private async Task<ConsoleLocation> StartMacOsConsoleAsync(string runDir, string safeTitle, string command,
+        ResolvedReviewLaunchSettings resolved, bool tabPerReview, Action<string>? logCommand = null)
     {
         if (!string.IsNullOrWhiteSpace(resolved.TerminalRawCommand))
         {
-            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command, logCommand);
+            if (tabPerReview) _log.LogWarning("Custom macOS terminal override does not support automatic tab grouping; opening a separate window.");
+            StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command, logCommand);
+            return tabPerReview ? ConsoleLocation.FallbackWindow : ConsoleLocation.Window;
+        }
+
+        if (string.Equals(resolved.TerminalProgram, "iTerm2", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(resolved.TerminalArgsTemplate))
+        {
+            return await LaunchAppleScriptAsync(BuildMacOsTabScript(runDir, safeTitle, command, iterm: true),
+                BuildMacOsITermWindowScript(runDir, command), tabPerReview, "iTerm2", logCommand);
         }
 
         if (!string.IsNullOrWhiteSpace(resolved.TerminalProgram) && !string.IsNullOrWhiteSpace(resolved.TerminalArgsTemplate))
         {
-            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command, logCommand);
+            if (tabPerReview) _log.LogWarning("Custom macOS terminal override does not support automatic tab grouping; opening a separate window.");
+            StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command, logCommand);
+            return tabPerReview ? ConsoleLocation.FallbackWindow : ConsoleLocation.Window;
         }
 
-        // Default macOS host: Terminal.app via AppleScript.
-        // Use ArgumentList (not Arguments) so the script is passed as a single
-        // raw argument — no shell quoting layer that would misparse the literal
-        // double quotes that are part of the AppleScript string syntax.
-        var script = $"tell application \"Terminal\" to do script \"cd {EscapeForAppleScriptSingleQuotedPath(runDir)}; {EscapeForAppleScript(command)}\"";
+        return await LaunchAppleScriptAsync(BuildMacOsTabScript(runDir, safeTitle, command, iterm: false),
+            BuildMacOsWindowScript(runDir, command), tabPerReview, "Terminal.app", logCommand);
+    }
+
+    private async Task<ConsoleLocation> LaunchAppleScriptAsync(string tabScript, string windowScript,
+        bool tabPerReview, string terminalName, Action<string>? logCommand)
+    {
+        if (!tabPerReview)
+            return await RunAppleScriptAsync(windowScript, logCommand) ? ConsoleLocation.Window : ConsoleLocation.Failed;
+
+        await _macLaunchLock.WaitAsync();
+        try
+        {
+            if (await RunAppleScriptAsync(tabScript, logCommand)) return ConsoleLocation.Tab;
+            if (terminalName == "Terminal.app")
+                _log.LogWarning("Could not open Terminal.app review tab; opening a separate window instead. Check Accessibility permission for tab creation.");
+            else
+                _log.LogWarning("Could not open iTerm2 review tab; opening a separate iTerm2 window instead.");
+            return await RunAppleScriptAsync(windowScript, logCommand) ? ConsoleLocation.FallbackWindow : ConsoleLocation.Failed;
+        }
+        finally
+        {
+            _macLaunchLock.Release();
+        }
+    }
+
+    private async Task<bool> RunAppleScriptAsync(string script, Action<string>? logCommand)
+    {
         logCommand?.Invoke($"Launching macOS terminal command: osascript -e {script}");
-        var psi = new ProcessStartInfo { FileName = "osascript", UseShellExecute = false };
+        var psi = new ProcessStartInfo { FileName = "osascript", UseShellExecute = false, RedirectStandardError = true };
         psi.ArgumentList.Add("-e");
         psi.ArgumentList.Add(script);
-        Process.Start(psi);
-        return true;
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Could not start osascript.");
+        var error = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        if (process.ExitCode == 0) return true;
+        _log.LogWarning("macOS terminal launch failed (exit {ExitCode}): {Error}", process.ExitCode, error.Trim());
+        return false;
     }
 
-    private static bool StartLinuxConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved, Action<string>? logCommand = null)
+    internal static string BuildMacOsWindowScript(string runDir, string command)
+        => $"tell application \"Terminal\" to do script \"{EscapeForAppleScript($"cd {EscapeForAppleScriptSingleQuotedPath(runDir)}; {command}")}\"";
+
+    internal static string BuildMacOsITermWindowScript(string runDir, string command)
+        => $"tell application \"iTerm2\" to create window with default profile command \"{EscapeForAppleScript($"cd {EscapeForAppleScriptSingleQuotedPath(runDir)}; {command}")}\"";
+
+    internal static string BuildMacOsTabScript(string runDir, string safeTitle, string command, bool iterm)
+    {
+        var shellCommand = EscapeForAppleScript($"cd {EscapeForAppleScriptSingleQuotedPath(runDir)}; {command}");
+        if (iterm)
+            return $"""
+                tell application "iTerm2"
+                    set reviewWindow to missing value
+                    repeat with w in windows
+                        repeat with t in tabs of w
+                            repeat with s in sessions of t
+                                tell s
+                                    if (variable "user.prInboxReviews") is "1" then
+                                        set reviewWindow to w
+                                        exit repeat
+                                    end if
+                                end tell
+                            end repeat
+                            if reviewWindow is not missing value then exit repeat
+                        end repeat
+                        if reviewWindow is not missing value then exit repeat
+                    end repeat
+                    if reviewWindow is missing value then
+                        set reviewWindow to (create window with default profile)
+                        set reviewSession to current session of reviewWindow
+                    else
+                        set reviewTab to (create tab with default profile) of reviewWindow
+                        set reviewSession to current session of reviewTab
+                    end if
+                    tell reviewSession
+                        set variable named "user.prInboxReviews" to "1"
+                        write text "{shellCommand}"
+                    end tell
+                end tell
+                """;
+
+        var title = EscapeForAppleScript($"{ReviewLauncherSettings.ReviewWindowName} {safeTitle}");
+        return $"""
+            tell application "Terminal"
+                set reviewWindow to missing value
+                repeat with w in windows
+                    repeat with t in tabs of w
+                        if (custom title of t) starts with "{ReviewLauncherSettings.ReviewWindowName} " then
+                            set reviewWindow to w
+                            exit repeat
+                        end if
+                    end repeat
+                    if reviewWindow is not missing value then exit repeat
+                end repeat
+                if reviewWindow is missing value then
+                    set reviewTab to do script "{shellCommand}"
+                else
+                    set index of reviewWindow to 1
+                    activate
+                    set oldTabCount to count of tabs of reviewWindow
+                    tell application "System Events" to keystroke "t" using command down
+                    repeat 20 times
+                        if (count of tabs of reviewWindow) > oldTabCount then exit repeat
+                        delay 0.1
+                    end repeat
+                    if (count of tabs of reviewWindow) is oldTabCount then error "Terminal did not open a new tab"
+                    set reviewTab to selected tab of reviewWindow
+                    do script "{shellCommand}" in reviewTab
+                end if
+                set custom title of reviewTab to "{title}"
+            end tell
+            """;
+    }
+
+    private ConsoleLocation StartLinuxConsole(string runDir, string safeTitle, string command, ResolvedReviewLaunchSettings resolved, bool tabPerReview, Action<string>? logCommand = null)
     {
         if (!string.IsNullOrWhiteSpace(resolved.TerminalRawCommand))
         {
-            return StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command, logCommand);
+            if (tabPerReview) _log.LogWarning("Custom Linux terminal override does not support automatic tab grouping; opening a separate window.");
+            StartWithRawShellCommand(resolved.TerminalRawCommand!, runDir, safeTitle, command, logCommand);
+            return tabPerReview ? ConsoleLocation.FallbackWindow : ConsoleLocation.Window;
         }
 
         if (!string.IsNullOrWhiteSpace(resolved.TerminalProgram) && !string.IsNullOrWhiteSpace(resolved.TerminalArgsTemplate))
         {
-            return StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command, logCommand);
+            if (tabPerReview) _log.LogWarning("Custom Linux terminal override does not support automatic tab grouping; opening a separate window.");
+            StartWithStructuredTemplate(resolved.TerminalProgram!, resolved.TerminalArgsTemplate!, runDir, safeTitle, command, logCommand);
+            return tabPerReview ? ConsoleLocation.FallbackWindow : ConsoleLocation.Window;
         }
 
-        foreach (var terminal in new[] { "x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm" })
+        var terminals = tabPerReview
+            ? new[] { "gnome-terminal", "konsole", "xfce4-terminal", "x-terminal-emulator", "xterm" }
+            : new[] { "x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm" };
+        foreach (var terminal in terminals)
         {
             var resolvedPath = ResolveOnPath(terminal);
             if (resolvedPath is null) continue;
 
             var bashCommand = EscapeForDoubleQuotedBash($"{command}; exec bash");
-            var args = terminal switch
-            {
-                "x-terminal-emulator" => $"-T \"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
-                "gnome-terminal" => $"--title=\"{safeTitle}\" -- bash -lc \"{bashCommand}\"",
-                "konsole" => $"--workdir \"{runDir}\" -p tabtitle=\"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
-                "xfce4-terminal" => $"--title \"{safeTitle}\" --working-directory \"{runDir}\" --command \"bash -lc \\\"{bashCommand}\\\"\"",
-                _ => $"-T \"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
-            };
+            var args = BuildLinuxTerminalArgs(terminal, tabPerReview, safeTitle, runDir, bashCommand);
+            var fallback = tabPerReview && terminal is ("x-terminal-emulator" or "xterm");
+            if (fallback) _log.LogWarning("{Terminal} cannot target a tab; opening a separate window.", terminal);
             logCommand?.Invoke($"Launching linux terminal command: {resolvedPath} {args}");
             Process.Start(new ProcessStartInfo
             {
@@ -507,11 +635,20 @@ public sealed class ReviewLauncher : IReviewLauncher, IAsyncDisposable
                 WorkingDirectory = runDir,
                 UseShellExecute = false,
             });
-            return true;
+            return fallback ? ConsoleLocation.FallbackWindow : tabPerReview ? ConsoleLocation.Tab : ConsoleLocation.Window;
         }
 
-        return false;
+        return ConsoleLocation.Failed;
     }
+
+    internal static string BuildLinuxTerminalArgs(string terminal, bool tabPerReview, string safeTitle, string runDir, string bashCommand)
+        => terminal switch
+        {
+            "gnome-terminal" => $"{(tabPerReview ? "--tab " : "")}--title=\"{safeTitle}\" -- bash -lc \"{bashCommand}\"",
+            "konsole" => $"{(tabPerReview ? "--new-tab " : "")}--workdir \"{runDir}\" -p tabtitle=\"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
+            "xfce4-terminal" => $"{(tabPerReview ? "--tab " : "")}--title \"{safeTitle}\" --working-directory \"{runDir}\" --command \"bash -lc \\\"{bashCommand}\\\"\"",
+            _ => $"-T \"{safeTitle}\" -e bash -lc \"{bashCommand}\"",
+        };
 
     private static bool StartWithStructuredTemplate(string program, string argsTemplate, string runDir, string title, string command, Action<string>? logCommand = null)
     {

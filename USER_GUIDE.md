@@ -61,7 +61,7 @@ You need these on `PATH`:
 | `gh` (GitHub CLI) | GitHub auth — `gh auth login --hostname github.com` |
 | `az` (Azure CLI) | ADO auth — `az login` (skip if no ADO sources) |
 | `pwsh` (PowerShell 7+) | Review launcher runs under this |
-| `wt.exe` (Windows Terminal) | Each Review opens in a new tab |
+| `wt.exe` (Windows Terminal) | Each Review opens in a new window by default; optional shared tab mode |
 | GitHub Copilot CLI (`copilot`) | Used by the launcher to run the review. Microsoft users set the launch command to `agency copilot …` (Settings → Review launcher). |
 
 ### 2. Build & start
@@ -326,11 +326,11 @@ skipped — the page never crashes over config.
      author rejected with evidence the agent agrees with)
    - Staleness clause ("verify PR HEAD is still `<sha>` before posting")
 5. Insert `review_runs` row; update `pull_requests.last_briefed_head_sha`.
-6. Spawn a Windows Terminal window running `copilot …` (or `agency copilot`
+6. Spawn a terminal window running `copilot …` (or `agency copilot`
    for Microsoft users), titled
    `<author> <repo> #<N> @<short-sha> <HH:mm>`. By default each review
    gets its own window; turn on **One tab per review** (Settings →
-   Review launcher) to route them into one shared window as tabs instead.
+   Review launcher) to route them into tabs where supported.
 
 A second Review on the same PR **always** creates a new immutable run —
 nothing is mutated in place.
@@ -344,11 +344,10 @@ don't have to dig through Alt-Tab:
 - **minimize / show** an individual review window.
 - **Minimize all** / **Show all** to clear or surface every review at once.
 
-The strip acts on one OS window per review, so it's only available in the
-default one-window-per-review mode. With **One tab per review** on, every
-review shares a single window — which can't be minimized or focused
-individually — so the strip is replaced by a short note pointing you at
-the terminal's own tab bar (`Ctrl+Tab`) instead.
+The strip acts on one Windows OS window per review, so it's only available
+on Windows in the default one-window-per-review mode. With **One tab per
+review** on, grouped reviews cannot be minimized or focused individually,
+so the strip is replaced by a note pointing you at your terminal's tab bar.
 
 ### Reading the Review page
 
@@ -622,7 +621,7 @@ Persisted settings that take effect on the **next** review you launch
 | **Allow all paths** | Appends `--allow-all-paths` to the review CLI invocation, skipping folder access approval while retaining tool and URL permission prompts. Off by default. |
 | **Yolo** | Appends `--yolo` to the review CLI invocation (`--allow-all-tools --allow-all-paths --allow-all-urls`), skipping every permission prompt. Faster and truly unattended — use only when you trust the agent. |
 | **Tab colour** | Colours the Windows Terminal tab for every review so it stands out from ordinary terminals. Accepts a hex like `#5da4ff`; leave blank to disable. |
-| **One tab per review** *(experimental)* | On: each review opens as a tab in one shared window (`pr-inbox-reviews`) instead of its own window — less desktop clutter when several run at once. Trade-off: the Inbox's per-review window controls don't apply in tab mode, and closing the shared window closes every review tab. Off (default): one window per review. |
+| **One tab per review** *(experimental)* | On: reviews open as tabs in a shared window with Windows Terminal, macOS Terminal.app, iTerm2, GNOME Terminal, Konsole, or Xfce Terminal. Set the macOS terminal program override to `iTerm2` (with no args) to use iTerm2 instead of Terminal.app. Terminal.app requires Accessibility permission for tab creation. Unsupported hosts and custom overrides fall back to separate windows with a notice. Per-review window controls don't apply in tab mode; closing the shared window closes its tabs. Off (default): one window per review. |
 
 The review orchestrator model defaults to `gpt-6-sol`. This is distinct
 from the independent reviewer pair, which defaults to `claude-opus-5.5`

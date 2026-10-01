@@ -228,21 +228,20 @@
     var tabPerReview = Config.ReviewLauncher.TabPerReview;
     var isWindows = OperatingSystem.IsWindows();
 }
-@if (!isWindows)
+@if (tabPerReview)
+{
+    <div class="toolbar console-strip" role="group" aria-label="Review consoles">
+        <span class="muted">
+            Reviews open as tabs when supported. Switch between them using your terminal's
+            tab bar — per-review minimize / restore isn't available in tab mode.
+        </span>
+    </div>
+}
+else if (!isWindows)
 {
     <div class="toolbar console-strip" role="group" aria-label="Review consoles">
         <span class="muted">
             Review console window controls are only available on Windows.
-        </span>
-    </div>
-}
-else if (tabPerReview)
-{
-    <div class="toolbar console-strip" role="group" aria-label="Review consoles">
-        <span class="muted">
-            Reviews open as tabs in one Windows Terminal window (<code>pr-inbox-reviews</code>).
-            Switch between them with the terminal tab bar or Ctrl+Tab — per-review
-            minimize / restore isn't available in tab mode.
         </span>
     </div>
 }
@@ -587,6 +586,11 @@ else
                         }
                     </td>
                     <td class="row-actions">
+                        <button class="row-refresh"
+                                disabled="@(State.GetActiveRowActivity(row.Url) is not null)"
+                                title="Fetch the latest status and details for this pull request"
+                                aria-label="@($"Refresh {row.DisplayRepo} pull request {row.Number}")"
+                                @onclick="() => OnRefreshRowAsync(row)">↻</button>
                         <button class="review" disabled="@(!PrRowSyncStateResolver.ReviewEnabled(RowSyncState(row)))"
                                 title="@PrRowSyncStateResolver.ReviewTooltip(RowSyncState(row))"
                                 @onclick="() => OnReviewAsync(row)">Review</button>
@@ -1771,6 +1775,14 @@ else
             Log.LogError(ex, "Review launcher threw");
             _lastLaunchMessage = $"Launcher error: {ex.Message}";
         }
+    }
+
+    private async Task OnRefreshRowAsync(InboxRow row)
+    {
+        if (State.GetActiveRowActivity(row.Url) is not null) return;
+
+        var (ok, error) = await Sync.TriggerEnrichOneAsync(row.Url, CancellationToken.None);
+        _lastLaunchMessage = ok ? null : $"Refresh failed: {error}";
     }
 
     private void OnToggleConsole(long runId, bool show)

@@ -519,12 +519,13 @@ else
                        disabled="@_busy" />
                 <strong>One tab per review (experimental)</strong>
                 <span class="muted">
-                    On: each review opens as a new <em>tab</em> in one shared Windows Terminal
-                    window (<code>pr-inbox-reviews</code>) instead of its own window — less
-                    desktop and taskbar clutter when several reviews run at once.
-                    Trade-off: because the tabs share a single window, the Inbox's per-review
-                    minimize / restore / show controls are unavailable in this mode (use the
-                    terminal's own tab bar or Ctrl+Tab instead).
+                    On: group reviews as tabs in Windows Terminal, macOS Terminal.app,
+                    iTerm2 (set the macOS terminal program to <code>iTerm2</code> under platform
+                    overrides), or GNOME Terminal, Konsole, and Xfce Terminal on Linux.
+                    Terminal.app requires Accessibility permission for tab creation.
+                    Unsupported/custom launchers fall back to separate windows.
+                    The Inbox's per-review window controls are unavailable in tab mode
+                    (use your terminal's tab bar instead).
                     Off (default): one window per review.
                 </span>
             </label>

@@ -113,8 +113,8 @@ work: refresh that one PR's snapshot, compute what's new since the
 last brief, write an **immutable** run directory containing `brief.md`
 + `metadata.json`, then hand it to a Copilot session. Re-reviewing
 appends a new run dir — nothing is ever overwritten. In the Web UI each
-review opens in its own Windows Terminal window by default; the **One
-tab per review** setting groups them as tabs in a single window instead.
+review opens in its own terminal window by default; the **One
+tab per review** setting groups them as tabs where supported.
 Step-by-step walkthrough lives in [USER_GUIDE.md § What "Review" actually does](USER_GUIDE.md#what-review-actually-does).
 
 ---
@@ -130,7 +130,7 @@ Step-by-step walkthrough lives in [USER_GUIDE.md § What "Review" actually does]
 ### Required to click "Review" (launcher tab)
 
 - [PowerShell 7+](https://learn.microsoft.com/powershell/scripting/install/installing-powershell-on-windows) (`pwsh`) — `tools/launch-review.ps1` runs under it
-- [Windows Terminal](https://aka.ms/terminal) (`wt.exe`) — each Review opens in its own window by default (or as a tab, with **One tab per review**)
+- A terminal host (Windows Terminal, macOS Terminal.app or iTerm2, or a Linux terminal) — each Review opens in its own window by default (or as a tab, with **One tab per review** where supported)
 - GitHub Copilot CLI (`copilot`) on `PATH`, authenticated to your model provider — the launcher invokes it. **Microsoft users:** set the launch command to `agency copilot …` (Settings → Review launcher, or `PRINBOX_REVIEW_COMMAND`) to drive it through the internal `agency` wrapper.
 - Read access to the plugin source. Default is the `dual-review` plugin published from this repo (`market:dual-review@jmprieur/pr-inbox`). To use a local clone or a different plugin, point `PRINBOX_REVIEW_PLUGIN` at it (see [Review launcher overrides](#review-launcher-overrides))
 

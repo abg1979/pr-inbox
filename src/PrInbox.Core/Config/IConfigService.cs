@@ -138,7 +138,7 @@ public interface IConfigService
     /// (<see cref="ReviewLauncherSettings.TabPerReview"/>) and mirrors it
     /// onto the DI singleton so the next review launch picks it up without a
     /// process restart. When on, reviews open as tabs in a single shared
-    /// Windows Terminal window instead of one window each.
+    /// terminal window instead of one window each, where supported.
     /// </summary>
     Task SetReviewLauncherTabPerReviewAsync(bool tabPerReview, CancellationToken ct = default);
 

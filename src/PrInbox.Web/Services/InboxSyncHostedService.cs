@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using PrInbox.Core.Config;
 using PrInbox.Core.Credentials;
 using PrInbox.Core.Models;
@@ -19,6 +20,7 @@ public sealed class InboxSyncHostedService : BackgroundService
     private readonly ILogger<InboxSyncHostedService> _log;
     private readonly ILoggerFactory _loggerFactory;
     private readonly SemaphoreSlim _syncGate = new(1, 1);
+    private readonly ConcurrentDictionary<string, byte> _rowRefreshes = new(StringComparer.OrdinalIgnoreCase);
     private volatile bool _syncing;
     private int _configChangedFlag;
 
@@ -557,6 +559,10 @@ public sealed class InboxSyncHostedService : BackgroundService
     public async Task<(bool ok, string? error)> TriggerEnrichOneAsync(string prUrl, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(prUrl)) return (false, "Empty PR URL.");
+        if (!_rowRefreshes.TryAdd(prUrl, 0)) return (false, "This PR is already refreshing.");
+
+        var activityKey = $"row-refresh::{prUrl}";
+        _state.NoteSyncActivity(activityKey, prUrl, "Refreshing latest PR status…");
         try
         {
             _log.LogInformation("Single-PR enrich requested for {Url}.", prUrl);
@@ -590,6 +596,7 @@ public sealed class InboxSyncHostedService : BackgroundService
                     var drift = DriftInfo.Compute(fresh, snap);
                     var tags = await tagRepo.GetTagsForPrAsync(fresh.Url, ct);
                     _state.Upsert(InboxRow.FromRow(fresh, open, bot, drift, likelyDone, tags, snap?.Files,
+                        snap?.CiStatus, snap?.MergeableState, snap?.ReviewDecision,
                         hasSnapshot: snap is not null));
                 }
             }
@@ -605,6 +612,11 @@ public sealed class InboxSyncHostedService : BackgroundService
         {
             _log.LogWarning(ex, "Single-PR enrich for {Url} failed", prUrl);
             return (false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _state.NoteSyncActivity(activityKey, null, null);
+            _rowRefreshes.TryRemove(prUrl, out _);
         }
     }
 

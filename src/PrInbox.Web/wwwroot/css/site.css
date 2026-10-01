@@ -259,6 +259,22 @@ button.review {
 button.review:hover:not([disabled]) { background: rgba(93,164,255,0.12); }
 button.review[disabled] { opacity: 0.5; cursor: default; }
 
+button.row-refresh {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+button.row-refresh:hover:not([disabled]) {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(93,164,255,0.12);
+}
+button.row-refresh[disabled] { opacity: 0.5; cursor: default; }
+
 .findings-counts > span,
 .findings-counts > a {
     display: inline-block;

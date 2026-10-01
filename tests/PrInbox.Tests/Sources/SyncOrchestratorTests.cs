@@ -215,6 +215,27 @@ public class SyncOrchestratorTests : IAsyncLifetime
         row!.Status.Should().Be(PullRequestStatus.Merged);
     }
 
+    [Theory]
+    [InlineData(PullRequestStatus.Merged)]
+    [InlineData(PullRequestStatus.Closed)]
+    public async Task RunEnrichOne_Refreshes_Authoritative_Status(PullRequestStatus latestStatus)
+    {
+        var id = new PrIdentity("https://github.com/owner/repo/pull/11", "gh.com:100#11000");
+        var source = new FakePrReadSourceBuilder("gh.com:emu", SourceKind.GitHub)
+            .WithPullRequest(
+                BuildBasicPr(id, DateTimeOffset.Parse("2026-05-13T10:00:00Z")),
+                BuildDetail(id) with { Status = latestStatus })
+            .Build();
+        var orch = new SyncOrchestrator(source, _prs, _snaps, _threads, _syncRuns);
+
+        await orch.RunFastAsync("jmprieur_microsoft", progress: null, CancellationToken.None);
+        var refreshedUrl = await orch.RunEnrichOneAsync(id.Url, CancellationToken.None);
+
+        refreshedUrl.Should().Be(id.Url);
+        var row = await _prs.GetAsync(id.Url, CancellationToken.None);
+        row!.Status.Should().Be(latestStatus);
+    }
+
     [Fact]
     public async Task RunDisappearedSweep_Stamps_DisappearedAt_When_Still_Open()
     {
