@@ -117,6 +117,15 @@ internal sealed class AdoApiClient
         return await GetJsonAsync<AdoDtos.PullRequest>(url, ct);
     }
 
+    public async Task<IReadOnlyList<AdoDtos.PullRequestLabel>> GetPullRequestLabelsAsync(
+        string project, string repoId, int prId, CancellationToken ct)
+    {
+        var url = $"https://dev.azure.com/{Uri.EscapeDataString(_org)}/{Uri.EscapeDataString(project)}/_apis/git/repositories/{Uri.EscapeDataString(repoId)}/pullrequests/{prId}/labels" +
+                  $"?api-version={ApiVersion}";
+        var response = await GetJsonAsync<AdoDtos.ListResponse<AdoDtos.PullRequestLabel>>(url, ct);
+        return response.Value;
+    }
+
     public async Task<IReadOnlyList<AdoDtos.Thread>> GetThreadsAsync(string project, string repoId, int prId, CancellationToken ct)
     {
         var url = $"https://dev.azure.com/{Uri.EscapeDataString(_org)}/{Uri.EscapeDataString(project)}/_apis/git/repositories/{Uri.EscapeDataString(repoId)}/pullrequests/{prId}/threads" +

@@ -211,7 +211,6 @@ public class AzureDevOpsReadSourceTests
                                        "author": { "name": "Alice", "email": "alice@example.com", "date": "2026-05-01T10:00:00Z" },
                                        "comment": "Initial commit\nmore body" }] }
             """);
-
         var (source, _) = BuildSource(handler);
         // ListAssignedFastAsync to seed reviewer id (so reviewer-state interpretation can use it)
         await foreach (var _ in source.ListAssignedFastAsync(CancellationToken.None)) { }
@@ -220,7 +219,7 @@ public class AzureDevOpsReadSourceTests
             Url: "https://dev.azure.com/fabrikam/Context/_git/MyRepo/pullrequest/42",
             Stable: "ado:fabrikam/77777777-aaaa-bbbb-cccc-888888888888/55555555-aaaa-bbbb-cccc-666666666666#42");
 
-        // Reset handler queue with detail/threads/commits responses (the first
+        // Reset handler queue with detail/threads/commits/labels responses (the first
         // listing exhausted the profile + an empty PR-list page). We just
         // re-enqueue the three enrichment responses in order.
         handler.Reset();
@@ -250,6 +249,7 @@ public class AzureDevOpsReadSourceTests
                                        "author": { "name": "Alice", "email": "alice@example.com", "date": "2026-05-01T10:00:00Z" },
                                        "comment": "Initial commit\nmore body" }] }
             """);
+        handler.Enqueue("""{ "count": 2, "value": [{ "name": "bug" }, { "name": "backend" }] }""");
 
         var bundle = await source.EnrichAsync(id, CancellationToken.None);
 
@@ -258,6 +258,8 @@ public class AzureDevOpsReadSourceTests
         bundle.Detail.MergeBaseSha.Should().Be("1234abcd");
         bundle.Detail.ReviewerState.Should().Be(ReviewerState.Approved); // vote=10
         bundle.Detail.OrderedCommitShas.Should().Equal("deadbeef");
+        bundle.Detail.Labels.Should().BeEquivalentTo("bug", "backend");
+        bundle.Detail.ApprovalCount.Should().Be(1);
 
         // Only the human-authored thread should survive — the all-system one is filtered.
         bundle.Threads.Should().HaveCount(1);

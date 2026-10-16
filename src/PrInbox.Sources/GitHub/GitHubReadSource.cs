@@ -220,11 +220,15 @@ public sealed class GitHubReadSource : IPrReadSource
 
         ReviewerState? reviewerState = null;
         string? reviewDecision = null;
+        int? approvalCount = null;
         try
         {
             var reviews = await client.PullRequest.Review.GetAll(owner, repo, number);
             reviewerState = InterpretReviewerState(reviews, ownLoginHint: null);
-            reviewDecision = ComputeReviewDecision(reviews);
+            var reviewSummary = ComputeReviewSummaryCore(reviews.Select(r =>
+                (r.User?.Login, (string?)r.State.StringValue, r.SubmittedAt)));
+            reviewDecision = reviewSummary.Decision;
+            approvalCount = reviewSummary.ApprovalCount;
         }
         catch
         {
@@ -310,7 +314,9 @@ public sealed class GitHubReadSource : IPrReadSource
             MergeableState: mergeable,
             CiStatus: ciStatus,
             ReviewDecision: reviewDecision,
-            IsDraft: pr.Draft);
+            IsDraft: pr.Draft,
+            Labels: pr.Labels?.Select(label => label.Name).Where(name => !string.IsNullOrWhiteSpace(name)).ToArray(),
+            ApprovalCount: approvalCount);
     }
 
     private static readonly HttpClient s_graphqlHttp = new()
@@ -711,6 +717,10 @@ public sealed class GitHubReadSource : IPrReadSource
     /// </summary>
     internal static string? ComputeReviewDecisionCore(
         IEnumerable<(string? Login, string? State, DateTimeOffset When)> reviews)
+        => ComputeReviewSummaryCore(reviews).Decision;
+
+    internal static (string? Decision, int ApprovalCount) ComputeReviewSummaryCore(
+        IEnumerable<(string? Login, string? State, DateTimeOffset When)> reviews)
     {
         var latestByUser = new Dictionary<string, (DateTimeOffset When, string State)>(StringComparer.OrdinalIgnoreCase);
         foreach (var (login, rawState, when) in reviews)
@@ -732,9 +742,10 @@ public sealed class GitHubReadSource : IPrReadSource
         }
 
         var states = latestByUser.Values.Select(v => v.State).ToList();
-        if (states.Contains("CHANGES_REQUESTED")) return "changes_requested";
-        if (states.Contains("APPROVED")) return "approved";
-        return null;
+        var decision = states.Contains("CHANGES_REQUESTED")
+            ? "changes_requested"
+            : states.Contains("APPROVED") ? "approved" : null;
+        return (decision, states.Count(state => state == "APPROVED"));
     }
 
     private (bool IsBot, BotKind? BotKind) ClassifyAuthor(User? user)

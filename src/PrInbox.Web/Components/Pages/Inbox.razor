@@ -304,6 +304,7 @@ else
                 <th>Author</th>
                 <th>Threads</th>
                 <th>State</th>
+                <th>Approvals</th>
                 <th class="age-th">
                     <button type="button"
                             class="th-sort @(_ageSortMode != AgeSortMode.None ? "active" : "")"
@@ -321,7 +322,7 @@ else
                 @if (_groupBy != GroupByMode.None)
                 {
                     <tr class="group-header">
-                        <td colspan="10">
+                        <td colspan="11">
                             <span class="group-marker" style="@(group.color is null ? "" : $"background:{group.color};")"></span>
                             <span class="group-name">@group.name</span>
                             <span class="muted">(@group.rows.Count)</span>
@@ -346,27 +347,42 @@ else
                         </a>
                         @{
                             var rowTags = row.TagsSafe;
-                            var inlineTagCount = Math.Min(rowTags.Count, 2);
-                        }
-                        @for (int i = 0; i < inlineTagCount; i++)
-                        {
-                            var t = rowTags[i];
-                            <span class="tag-chip"
-                                  style="@($"background:{t.Color};")"
-                                  title="@($"Tag: {t.Name}. Click + to manage.")">@t.Name</span>
-                        }
-                        @if (rowTags.Count > inlineTagCount)
-                        {
-                            <button type="button"
-                                    class="tag-chip tag-overflow"
-                                    title="Show all tags on this PR"
-                                    @onclick="() => OpenTagPopover(row.Url)">+@(rowTags.Count - inlineTagCount)</button>
+                            var upstreamLabels = row.UpstreamLabelsSafe;
                         }
                         <button type="button"
                                 class="tag-add"
                                 title="Add or remove tags"
                                 aria-label="Manage tags"
                                 @onclick="() => OpenTagPopover(row.Url)">+</button>
+                        <div class="pr-label-list">
+                            @for (var i = 0; i < rowTags.Count; i++)
+                            {
+                                var tag = rowTags[i];
+                                <span class="tag-chip"
+                                      style="@($"background:{tag.Color};")"
+                                      title="@($"Local tag: {tag.Name}")">@tag.Name</span>
+                                @if (i < rowTags.Count - 1 || upstreamLabels.Count > 0)
+                                {
+                                    <span class="label-value-separator" aria-hidden="true">·</span>
+                                }
+                            }
+                            @if (rowTags.Count > 0 && upstreamLabels.Count > 0)
+                            {
+                                <span class="label-group-separator" aria-hidden="true">|</span>
+                            }
+                            @for (var i = 0; i < upstreamLabels.Count; i++)
+                            {
+                                <span class="pr-label-chip" title="@($"Pull request label: {upstreamLabels[i]}")">@upstreamLabels[i]</span>
+                                @if (i < upstreamLabels.Count - 1)
+                                {
+                                    <span class="label-value-separator" aria-hidden="true">·</span>
+                                }
+                            }
+                            @if (rowTags.Count == 0 && upstreamLabels.Count == 0)
+                            {
+                                <span class="muted">–</span>
+                            }
+                        </div>
                         @if (string.Equals(_openTagPopoverForUrl, row.Url, StringComparison.Ordinal))
                         {
                             <div class="tag-popover-backdrop" @onclick="CloseTagPopover"></div>
@@ -467,6 +483,19 @@ else
                                   title="You're no longer a requested reviewer on this PR (still open upstream). Ignore it to hide.">
                                 no longer assigned
                             </span>
+                        }
+                    </td>
+                    <td>
+                        @if (row.ApprovalCount is { } approvals)
+                        {
+                            <span class="badge @(approvals > 0 ? "status-merged" : "status-other")"
+                                  title="Current approvals from reviewers">
+                                @approvals @(approvals == 1 ? "approval" : "approvals")
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="muted">@(row.EnrichState == EnrichState.Enriched ? "–" : "…")</span>
                         }
                     </td>
                     <td class="age muted" title="@AgeTooltip(row.UpstreamCreatedAt)">@AgeLabel(row.UpstreamCreatedAt)</td>

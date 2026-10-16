@@ -36,7 +36,9 @@ public sealed record RemotePullRequestDetail(
     string? MergeableState = null,
     string? CiStatus = null,
     string? ReviewDecision = null,
-    bool IsDraft = false);
+    bool IsDraft = false,
+    IReadOnlyList<string>? Labels = null,
+    int? ApprovalCount = null);
 
 /// <summary>
 /// One file changed in a PR. Populated when the source adapter supports a

@@ -705,13 +705,38 @@ public class RepositoryRoundTripTests : IAsyncLifetime
             mergeableState: "clean",
             ciStatus: "success",
             files: new[] { new SnapshotFileChange("src/A.cs", 10, 2, "modified") },
-            CancellationToken.None);
+            CancellationToken.None,
+            labels: new[] { "bug", "backend" },
+            approvalCount: 2);
 
         var latest = await snapRepo.GetLatestAsync(row.Identity, CancellationToken.None);
         latest!.MergeableState.Should().Be("clean");
         latest.CiStatus.Should().Be("success");
         latest.Files.Should().NotBeNull();
         latest.Files!.Should().ContainSingle();
+        latest.Labels.Should().BeEquivalentTo("bug", "backend");
+        latest.ApprovalCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task InsertIfChangedAsync_Persists_Labels_And_Approval_Count()
+    {
+        var prRepo = new PullRequestRepository(_db);
+        var snapRepo = new PrSnapshotRepository(_db);
+        var row = SampleRow();
+        await prRepo.UpsertAsync(row, CancellationToken.None);
+
+        await snapRepo.InsertIfChangedAsync(
+            row.Identity, DateTimeOffset.UtcNow,
+            "abc", "base", null, new[] { "abc" },
+            ReviewerState.Requested, PullRequestStatus.Open, null,
+            CancellationToken.None,
+            labels: new[] { "bug" },
+            approvalCount: 0);
+
+        var latest = await snapRepo.GetLatestAsync(row.Identity, CancellationToken.None);
+        latest!.Labels.Should().BeEquivalentTo("bug");
+        latest.ApprovalCount.Should().Be(0);
     }
 
     [Fact]
@@ -1269,4 +1294,3 @@ public class RepositoryRoundTripTests : IAsyncLifetime
         tags[0].Color.Should().Be("#dc2626");
     }
 }
-

@@ -84,6 +84,11 @@ internal static class AdoDtos
         [JsonPropertyName("isRequired")] public bool IsRequired { get; init; }
     }
 
+    public sealed class PullRequestLabel
+    {
+        [JsonPropertyName("name")] public string Name { get; init; } = string.Empty;
+    }
+
     public sealed class Repository
     {
         [JsonPropertyName("id")] public string Id { get; init; } = string.Empty;

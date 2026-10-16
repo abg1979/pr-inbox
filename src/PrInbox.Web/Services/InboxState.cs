@@ -63,7 +63,9 @@ public sealed record InboxRow(
     string? MergeableState = null,
     string? ReviewDecision = null,
     bool IsDraft = false,
-    bool HasSnapshot = false)
+    bool HasSnapshot = false,
+    IReadOnlyList<string>? UpstreamLabels = null,
+    int? ApprovalCount = null)
 {
     /// <summary>
     /// True when the user has flagged this PR as "of interest." Flag is
@@ -80,6 +82,8 @@ public sealed record InboxRow(
     public IReadOnlyList<TagRow> TagsSafe => Tags ?? Array.Empty<TagRow>();
 
     public bool HasTags => Tags is not null && Tags.Count > 0;
+
+    public IReadOnlyList<string> UpstreamLabelsSafe => UpstreamLabels ?? Array.Empty<string>();
 
     /// <summary>Changed paths, never null for safe iteration.</summary>
     public IReadOnlyList<string> TouchedPathsSafe => TouchedPaths ?? Array.Empty<string>();
@@ -125,7 +129,9 @@ public sealed record InboxRow(
         string? ciStatus = null,
         string? mergeableState = null,
         string? reviewDecision = null,
-        bool hasSnapshot = false)
+        bool hasSnapshot = false,
+        IReadOnlyList<string>? upstreamLabels = null,
+        int? approvalCount = null)
     {
         drift ??= DriftInfo.Unknown;
         var (touchedPaths, touchedState) = ClassifyTouchedPaths(row.EnrichState, snapshotFiles);
@@ -163,7 +169,9 @@ public sealed record InboxRow(
             mergeableState,
             reviewDecision,
             row.IsDraft,
-            hasSnapshot);
+            hasSnapshot,
+            upstreamLabels,
+            approvalCount);
     }
 
     /// <summary>

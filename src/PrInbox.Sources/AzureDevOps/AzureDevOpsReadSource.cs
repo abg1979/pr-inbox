@@ -127,10 +127,11 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
         var detailTask = _client.GetPullRequestAsync(_project, repoId, prId, ct);
         var threadsTask = _client.GetThreadsAsync(_project, repoId, prId, ct);
         var commitsTask = _client.GetCommitsAsync(_project, repoId, prId, ct);
+        var labelsTask = FetchLabelsAsync(repoId, prId, ct);
 
-        await Task.WhenAll(detailTask, threadsTask, commitsTask);
+        await Task.WhenAll(detailTask, threadsTask, commitsTask, labelsTask);
 
-        var detail = MapDetail(id, detailTask.Result, commitsTask.Result);
+        var detail = MapDetail(id, detailTask.Result, commitsTask.Result, labelsTask.Result);
         var threads = MapThreads(threadsTask.Result);
         _logger.LogInformation(
             "ADO enrich completed (sourceId={SourceId}, url={Url}, commits={CommitCount}, threads={ThreadCount}).",
@@ -218,7 +219,11 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
             IsDraft: pr.IsDraft);
     }
 
-    private RemotePullRequestDetail MapDetail(PrIdentity id, AdoDtos.PullRequest pr, IReadOnlyList<AdoDtos.Commit> commits)
+    private RemotePullRequestDetail MapDetail(
+        PrIdentity id,
+        AdoDtos.PullRequest pr,
+        IReadOnlyList<AdoDtos.Commit> commits,
+        IReadOnlyList<string>? labels)
     {
         var headSha = pr.LastMergeSourceCommit?.CommitId ?? string.Empty;
         var baseSha = pr.LastMergeTargetCommit?.CommitId ?? string.Empty;
@@ -263,7 +268,31 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
             // ADO has no single combined CI status; policy evaluations + build
             // results are separate calls. Deferred for v0.2.
             CiStatus: null,
-            IsDraft: pr.IsDraft);
+            IsDraft: pr.IsDraft,
+            Labels: labels,
+            ApprovalCount: pr.Reviewers.Count(reviewer => reviewer.Vote > 0));
+    }
+
+    private async Task<IReadOnlyList<string>?> FetchLabelsAsync(string repoId, int prId, CancellationToken ct)
+    {
+        try
+        {
+            var labels = await _client.GetPullRequestLabelsAsync(_project, repoId, prId, ct);
+            return labels
+                .Select(label => label.Name)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToArray();
+        }
+        catch (AdoApiException ex)
+        {
+            _logger.LogDebug(ex, "ADO labels endpoint failed for PR {PullRequestId}; labels will remain unchanged.", prId);
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogDebug(ex, "ADO labels request failed for PR {PullRequestId}; labels will remain unchanged.", prId);
+            return null;
+        }
     }
 
     private IReadOnlyList<RemoteThread> MapThreads(IReadOnlyList<AdoDtos.Thread> threads)

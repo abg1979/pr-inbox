@@ -226,4 +226,20 @@ public class GitHubReviewDecisionTests
         };
         GitHubReadSource.ComputeReviewDecisionCore(reviews).Should().BeNull();
     }
+
+    [Fact]
+    public void Review_Summary_Counts_Active_Approvals_Even_When_Changes_Are_Requested()
+    {
+        var reviews = new (string?, string?, DateTimeOffset)[]
+        {
+            ("alice", "APPROVED", T0),
+            ("bob", "CHANGES_REQUESTED", T0),
+            ("carol", "APPROVED", T0),
+            ("carol", "DISMISSED", T0.AddHours(1)),
+        };
+
+        var summary = GitHubReadSource.ComputeReviewSummaryCore(reviews);
+        summary.Decision.Should().Be("changes_requested");
+        summary.ApprovalCount.Should().Be(1);
+    }
 }

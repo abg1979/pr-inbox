@@ -508,7 +508,9 @@ public sealed class SyncOrchestrator
             mergeableState: bundle.Detail.MergeableState,
             ciStatus: bundle.Detail.CiStatus,
             files: files,
-            reviewDecision: bundle.Detail.ReviewDecision);
+            reviewDecision: bundle.Detail.ReviewDecision,
+            labels: bundle.Detail.Labels,
+            approvalCount: bundle.Detail.ApprovalCount);
 
         if (!inserted)
         {
@@ -522,7 +524,9 @@ public sealed class SyncOrchestrator
                 ciStatus: bundle.Detail.CiStatus,
                 files: files,
                 ct,
-                reviewDecision: bundle.Detail.ReviewDecision);
+                reviewDecision: bundle.Detail.ReviewDecision,
+                labels: bundle.Detail.Labels,
+                approvalCount: bundle.Detail.ApprovalCount);
         }
 
         await _threads.UpsertManyAsync(row.Identity, bundle.Threads, enrichedAt, ct);

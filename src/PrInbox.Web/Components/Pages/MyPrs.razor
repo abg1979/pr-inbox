@@ -74,6 +74,7 @@ else
                 <th>State</th>
                 <th>CI</th>
                 <th>Review</th>
+                <th>Approvals</th>
                 <th>Mergeable</th>
                 <th>Actions</th>
                 <th>Age</th>
@@ -89,6 +90,39 @@ else
                         <a href="@row.Url" target="_blank" rel="noopener">
                             @row.DisplayRepo #@row.Number
                         </a>
+                        <div class="pr-label-list">
+                            @{
+                                var rowTags = row.TagsSafe;
+                                var upstreamLabels = row.UpstreamLabelsSafe;
+                            }
+                            @for (var i = 0; i < rowTags.Count; i++)
+                            {
+                                var tag = rowTags[i];
+                                <span class="tag-chip"
+                                      style="@($"background:{tag.Color};")"
+                                      title="@($"Local tag: {tag.Name}")">@tag.Name</span>
+                                @if (i < rowTags.Count - 1 || upstreamLabels.Count > 0)
+                                {
+                                    <span class="label-value-separator" aria-hidden="true">·</span>
+                                }
+                            }
+                            @if (rowTags.Count > 0 && upstreamLabels.Count > 0)
+                            {
+                                <span class="label-group-separator" aria-hidden="true">|</span>
+                            }
+                            @for (var i = 0; i < upstreamLabels.Count; i++)
+                            {
+                                <span class="pr-label-chip" title="@($"Pull request label: {upstreamLabels[i]}")">@upstreamLabels[i]</span>
+                                @if (i < upstreamLabels.Count - 1)
+                                {
+                                    <span class="label-value-separator" aria-hidden="true">·</span>
+                                }
+                            }
+                            @if (rowTags.Count == 0 && upstreamLabels.Count == 0)
+                            {
+                                <span class="muted">–</span>
+                            }
+                        </div>
                     </td>
                     <td>
                         @if (row.IsDraft)
@@ -109,6 +143,16 @@ else
                         @if (ReviewLabel(row.ReviewDecision) is { } rv)
                         {
                             <span class="badge @ReviewClass(row.ReviewDecision)">@rv</span>
+                        }
+                        else { <span class="muted">@(row.EnrichState == EnrichState.Enriched ? "–" : "…")</span> }
+                    </td>
+                    <td>
+                        @if (row.ApprovalCount is { } approvals)
+                        {
+                            <span class="badge @(approvals > 0 ? "status-merged" : "status-other")"
+                                  title="Current approvals from reviewers">
+                                @approvals @(approvals == 1 ? "approval" : "approvals")
+                            </span>
                         }
                         else { <span class="muted">@(row.EnrichState == EnrichState.Enriched ? "–" : "…")</span> }
                     </td>

@@ -42,7 +42,9 @@ public sealed class PrSnapshotRepository
         string? mergeableState = null,
         string? ciStatus = null,
         IReadOnlyList<SnapshotFileChange>? files = null,
-        string? reviewDecision = null)
+        string? reviewDecision = null,
+        IReadOnlyList<string>? labels = null,
+        int? approvalCount = null)
     {
         await using var conn = await _db.OpenAsync(ct);
 
@@ -63,11 +65,12 @@ public sealed class PrSnapshotRepository
             INSERT INTO pr_snapshots (
               pr_identity, synced_at, head_sha, base_sha, merge_base_sha,
               ordered_commit_shas, reviewer_state, pr_state, raw_metadata_json,
-              mergeable_state, ci_status, files_json, review_decision
+              mergeable_state, ci_status, files_json, review_decision,
+              labels_json, approval_count
             ) VALUES (
               $prId, $syncedAt, $headSha, $baseSha, $mergeBaseSha,
               $commitShas, $reviewerState, $prState, $rawJson,
-              $mergeable, $ci, $files, $reviewDecision
+              $mergeable, $ci, $files, $reviewDecision, $labels, $approvalCount
             );
             """;
         cmd.Parameters.AddWithValue("$prId", identity.Url);
@@ -86,6 +89,9 @@ public sealed class PrSnapshotRepository
                 ? DBNull.Value
                 : (object)JsonSerializer.Serialize(files));
         cmd.Parameters.AddWithValue("$reviewDecision", (object?)reviewDecision ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$labels",
+            labels is null ? DBNull.Value : (object)JsonSerializer.Serialize(labels));
+        cmd.Parameters.AddWithValue("$approvalCount", (object?)approvalCount ?? DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync(ct);
         return true;
@@ -116,7 +122,9 @@ public sealed class PrSnapshotRepository
         string? ciStatus,
         IReadOnlyList<SnapshotFileChange>? files,
         CancellationToken ct,
-        string? reviewDecision = null)
+        string? reviewDecision = null,
+        IReadOnlyList<string>? labels = null,
+        int? approvalCount = null)
     {
         await using var conn = await _db.OpenAsync(ct);
         await using var cmd = conn.CreateCommand();
@@ -125,7 +133,9 @@ public sealed class PrSnapshotRepository
             SET mergeable_state = COALESCE($mergeable, mergeable_state),
                 ci_status       = COALESCE($ci,        ci_status),
                 files_json      = COALESCE($files,     files_json),
-                review_decision = COALESCE($reviewDecision, review_decision)
+                review_decision = COALESCE($reviewDecision, review_decision),
+                labels_json     = COALESCE($labels, labels_json),
+                approval_count  = COALESCE($approvalCount, approval_count)
             WHERE id = (
               SELECT id FROM pr_snapshots
               WHERE pr_identity = $prId
@@ -141,6 +151,9 @@ public sealed class PrSnapshotRepository
                 ? DBNull.Value
                 : (object)JsonSerializer.Serialize(files));
         cmd.Parameters.AddWithValue("$reviewDecision", (object?)reviewDecision ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$labels",
+            labels is null ? DBNull.Value : (object)JsonSerializer.Serialize(labels));
+        cmd.Parameters.AddWithValue("$approvalCount", (object?)approvalCount ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
@@ -194,7 +207,9 @@ public sealed class PrSnapshotRepository
             MergeableState: ReadOptionalString(reader, "mergeable_state"),
             CiStatus: ReadOptionalString(reader, "ci_status"),
             Files: ReadOptionalFiles(reader, "files_json"),
-            ReviewDecision: ReadOptionalString(reader, "review_decision"));
+            ReviewDecision: ReadOptionalString(reader, "review_decision"),
+            Labels: ReadOptionalStringList(reader, "labels_json"),
+            ApprovalCount: ReadOptionalInt32(reader, "approval_count"));
     }
 
     private static bool HasColumn(SqliteDataReader reader, string name)
@@ -229,6 +244,27 @@ public sealed class PrSnapshotRepository
             // Tolerant of upgrade-time malformed rows; brief just falls back to "files unavailable".
             return null;
         }
+    }
+
+    private static IReadOnlyList<string>? ReadOptionalStringList(SqliteDataReader reader, string column)
+    {
+        var json = ReadOptionalString(reader, column);
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static int? ReadOptionalInt32(SqliteDataReader reader, string column)
+    {
+        if (!HasColumn(reader, column)) return null;
+        var ord = reader.GetOrdinal(column);
+        return reader.IsDBNull(ord) ? null : reader.GetInt32(ord);
     }
 
     private static bool CommitShasEqual(IReadOnlyList<string> a, IReadOnlyList<string> b)
