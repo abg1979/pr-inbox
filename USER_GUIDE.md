@@ -36,7 +36,7 @@
 
 `pr-inbox` is a personal harness for reviewing many PRs at scale across
 **GitHub.com**, **GitHub Enterprise**, and **Azure DevOps**. It does not
-review code — `dual-model-review` (Claude Opus 5.5 + GPT-6 Sol by default)
+review code — `dual-model-review` (Claude Opus 5.5 + GPT-6.1 Sol by default)
 does that. `pr-inbox`'s job
 is to tell you **which** PRs to look at, **what changed** since you last
 looked, hand a fully-bootstrapped brief to a Copilot tab, and remember
@@ -266,7 +266,21 @@ author reply, or follow a teammate's work.
   filter (when you've scoped a repo to specific folders).
 - **Group by Tag** — group rows into collapsible sections by the tags
   you've attached.
-- **Age** column header — sort oldest-first / newest-first / off.
+
+**Table sorting:** Click any data-column header (**Source**, **Repo / PR**,
+**Title**, **Author**, **Threads**, **State**, **Approvals**, **Age**,
+**Last sync**, or **Review**) to cycle ascending / descending / off.
+The active header shows an arrow, and your choice survives page reloads.
+Choosing another column starts an ascending sort; turning sorting off restores
+the default row order. With **Group by Tag**, sorting applies within each group.
+The **Actions** column contains buttons and is not sortable.
+
+Text sorts alphabetically (case-insensitive); **Repo / PR** sorts by repository
+then numeric PR number. Counts sort numerically. **Age** starts oldest-first;
+**Last sync** starts with the earliest sync timestamp. Unknown values stay last
+in either direction. **Review** sorts by findings counts, comparing critical,
+high, medium, then low severity; ascending places in-progress reviews before
+completed reviews, while PRs without a review always stay last.
 
 ### Disappeared PRs
 
@@ -623,9 +637,9 @@ Persisted settings that take effect on the **next** review you launch
 | **Tab colour** | Colours the Windows Terminal tab for every review so it stands out from ordinary terminals. Accepts a hex like `#5da4ff`; leave blank to disable. |
 | **One tab per review** *(experimental)* | On: reviews open as tabs in a shared window with Windows Terminal, macOS Terminal.app, iTerm2, GNOME Terminal, Konsole, or Xfce Terminal. Set the macOS terminal program override to `iTerm2` (with no args) to use iTerm2 instead of Terminal.app. Terminal.app requires Accessibility permission for tab creation. Unsupported hosts and custom overrides fall back to separate windows with a notice. Per-review window controls don't apply in tab mode; closing the shared window closes its tabs. Off (default): one window per review. |
 
-The review orchestrator model defaults to `gpt-6-sol`. This is distinct
+The review orchestrator model defaults to `gpt-6.1-sol`. This is distinct
 from the independent reviewer pair, which defaults to `claude-opus-5.5`
-and `gpt-6-sol`.
+and `gpt-6.1-sol`.
 
 If you need fancier overrides (different model, different plugin),
 use the env vars in [§ Review launcher overrides](README.md#review-launcher-overrides).
@@ -756,7 +770,7 @@ from the CLI, the same seven steps run:
    - Your open threads with status
    - Recent bot comments (Copilot review, Copilot coding agent) since
      the last brief
-   - Standard `dual-model-review` invocation block (Claude Opus 5.5 + GPT-6 Sol,
+   - Standard `dual-model-review` invocation block (Claude Opus 5.5 + GPT-6.1 Sol,
     asymmetry instructions, `do NOT post`, `diff_anchorable` flag,
     95%+ inline filter)
    - Staleness clause ("verify PR HEAD is still `<sha>` before posting")

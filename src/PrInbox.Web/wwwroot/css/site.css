@@ -154,7 +154,7 @@ a.drift:hover { text-decoration: underline; }
     letter-spacing: 0.04em;
 }
 .pr-table tr:last-child td { border-bottom: none; }
-/* Clickable "Age" column header. Inherits the th's uppercase muted look but
+/* Clickable column headers. Inherit the th's uppercase muted look but
    is interactive; .active marks the column the table is currently sorted by. */
 .pr-table th .th-sort {
     background: transparent;
