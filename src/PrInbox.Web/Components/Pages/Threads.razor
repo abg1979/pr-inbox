@@ -249,7 +249,9 @@ else
         _refreshMessage = null;
         // Render the "Refreshing…" state immediately, before the trigger's
         // synchronous startup runs (see Inbox.OnRefreshAsync for the rationale).
+#pragma warning disable BL0012 // Render before yielding to synchronous startup work.
         StateHasChanged();
+#pragma warning restore BL0012
         await Task.Yield();
         try
         {
@@ -350,10 +352,18 @@ else
 
         if (!_dryRun)
         {
-            var ok = await Js.InvokeAsync<bool>(
-                "confirm",
-                $"Resolve {_selected.Count} thread{(_selected.Count == 1 ? "" : "s")} on GitHub? This cannot be undone.");
-            if (!ok) return;
+            try
+            {
+                var ok = await Js.InvokeAsync<bool>(
+                    "confirm",
+                    $"Resolve {_selected.Count} thread{(_selected.Count == 1 ? "" : "s")} on GitHub? This cannot be undone.");
+                if (!ok) return;
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning(ex, "Thread resolution confirmation failed for {Url}", Url);
+                return;
+            }
         }
 
         _resolving = true;

@@ -4,7 +4,7 @@
 > Goes deeper than the [README](README.md), which stays focused on install
 > and architecture. If you're new, start with [§ First ten minutes](#first-ten-minutes).
 
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
+[![.NET 11](https://img.shields.io/badge/.NET-11.0-512BD4)](https://dotnet.microsoft.com/)
 [![Tests: 425](https://img.shields.io/badge/tests-425_passing-brightgreen)](#)
 
 ---
@@ -57,7 +57,7 @@ You need these on `PATH`:
 
 | Tool | Why |
 |---|---|
-| .NET 10 SDK | Build + run |
+| .NET 11 SDK | Build + run |
 | `gh` (GitHub CLI) | GitHub auth — `gh auth login --hostname github.com` |
 | `az` (Azure CLI) | ADO auth — `az login` (skip if no ADO sources) |
 | `pwsh` (PowerShell 7+) | Review launcher runs under this |

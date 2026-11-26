@@ -5,7 +5,7 @@
 
 [![Status: v0.2](https://img.shields.io/badge/status-v0.2-brightgreen)](#status)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
+[![.NET 11](https://img.shields.io/badge/.NET-11.0-512BD4)](https://dotnet.microsoft.com/)
 [![Tests: 425](https://img.shields.io/badge/tests-425_passing-brightgreen)](#development)
 
 `pr-inbox` is the harness for review-at-scale. It does not review code itself —
@@ -123,7 +123,7 @@ Step-by-step walkthrough lives in [USER_GUIDE.md § What "Review" actually does]
 
 ### Required to build, sync, and list
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [.NET 11 SDK](https://dotnet.microsoft.com/download)
 - [`gh`](https://cli.github.com/) — GitHub CLI, authenticated for github.com and any GHE host you use (`gh auth login --hostname github.com`)
 - [`az`](https://learn.microsoft.com/cli/azure/install-azure-cli) — Azure CLI, signed in (`az login`) — only needed if you add ADO sources
 
@@ -346,11 +346,11 @@ pr-inbox/
 ├── ARCHITECTURE.md          # design rationale + rubber-duck critique log
 ├── AMBIGUITIES.md           # open design decisions (read first in the morning)
 ├── LICENSE                  # MIT
-├── global.json              # pins .NET 10.0.202
+├── global.json              # pins .NET 11.0.100
 ├── Directory.Build.props    # nullable, implicit usings, treat warnings as errors
 ├── Directory.Packages.props # central package management
 ├── NuGet.config             # nuget.org only
-└── PrInbox.slnx             # .NET 10 XML solution
+└── PrInbox.slnx             # XML solution
 ```
 
 ---

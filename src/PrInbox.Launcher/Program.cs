@@ -236,7 +236,7 @@ WebHostLaunchSpec? ResolveWebHost()
         return sideBySideHost;
     }
 
-    // 4. Dev layout: src/PrInbox.Launcher/bin/<Config>/net10.0/ → src/PrInbox.Web/bin/<Config>/net10.0/
+    // 4. Dev layout: src/PrInbox.Launcher/bin/<Config>/net11.0/ → src/PrInbox.Web/bin/<Config>/net11.0/
     try
     {
         var tfmDir = new DirectoryInfo(baseDir.TrimEnd(Path.DirectorySeparatorChar));
@@ -244,14 +244,14 @@ WebHostLaunchSpec? ResolveWebHost()
         var srcDir = configDir?.Parent?.Parent?.Parent; // bin → PrInbox.Launcher → src
         if (configDir is not null && srcDir is not null)
         {
-            var devExe = Path.Combine(srcDir.FullName, "PrInbox.Web", "bin", configDir.Name, "net10.0", exeName);
+            var devExe = Path.Combine(srcDir.FullName, "PrInbox.Web", "bin", configDir.Name, "net11.0", exeName);
             var devHost = FromExecutable(devExe);
             if (devHost is not null)
             {
                 return devHost;
             }
 
-            var devDll = Path.Combine(srcDir.FullName, "PrInbox.Web", "bin", configDir.Name, "net10.0", dllName);
+            var devDll = Path.Combine(srcDir.FullName, "PrInbox.Web", "bin", configDir.Name, "net11.0", dllName);
             var devDllHost = FromDotnetDll(devDll);
             if (devDllHost is not null)
             {

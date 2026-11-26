@@ -29,7 +29,7 @@ session model is native. SQLite is appropriate for a personal operator tool —
 enough structure for state, sync status, and future telemetry, no service
 infrastructure to run.
 
-### Why C# .NET 10 (not Python or PowerShell)
+### Why C# .NET 11 (not Python or PowerShell)
 
 - Auditability + type safety + idiomatic for a Microsoft.Identity-team author.
 - Could grow into a shipped tool; .NET ecosystem fits.

@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
@@ -15,7 +16,7 @@
     <!-- Build the web app first so pr-inbox-web.exe exists next door, but do
          NOT pull its assembly into this project. The tray launches the web
          exe out-of-process; an assembly reference would drag the whole
-         ASP.NET host (and its net10.0 TFM) into this net10.0-windows app. -->
+         ASP.NET host (and its net11.0 TFM) into this net11.0-windows app. -->
     <ProjectReference Include="..\PrInbox.Web\PrInbox.Web.csproj"
                       ReferenceOutputAssembly="false"
                       Private="false"

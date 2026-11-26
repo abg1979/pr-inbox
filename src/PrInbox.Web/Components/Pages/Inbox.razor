@@ -1849,7 +1849,9 @@ else
         // synchronous startup work. Otherwise Blazor doesn't re-render until the
         // sync chain reaches its first awaited I/O, so the button feedback lags
         // behind the click.
+#pragma warning disable BL0012 // Render before yielding to synchronous startup work.
         StateHasChanged();
+#pragma warning restore BL0012
         await Task.Yield();
         try
         {

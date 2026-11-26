@@ -155,7 +155,7 @@ without quietly taking the wheel.
 
 ## Try it
 
-PR Inbox is **open source (MIT)** and runs on **.NET 10**. If you're drowning in
+PR Inbox is **open source (MIT)** and runs on **.NET 11**. If you're drowning in
 review queues across more than one platform, it's built for exactly that.
 
 - **Clone it**, run `Start.bat`, add a source, and you're triaging in a minute.

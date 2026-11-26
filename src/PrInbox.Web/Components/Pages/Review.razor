@@ -380,7 +380,6 @@ else
             Log.LogError(ex, "Mark done & back for {Url} failed", Url);
             _actionMessage = $"Could not mark done: {ex.Message}";
             _actionBusy = false;
-            StateHasChanged();
         }
     }
 
@@ -415,7 +414,6 @@ else
         finally
         {
             _actionBusy = false;
-            StateHasChanged();
         }
     }
 
@@ -541,8 +539,16 @@ else
             var suffix = picks.Count == 0
                 ? $"{verb} {Url}? You are accountable for this AI-assisted review. This cannot be undone."
                 : $"{verb} {Url} with {picks.Count} finding(s)? You are accountable for these AI-assisted comments. This cannot be undone.";
-            var ok = await Js.InvokeAsync<bool>("confirm", suffix);
-            if (!ok) return;
+            try
+            {
+                var ok = await Js.InvokeAsync<bool>("confirm", suffix);
+                if (!ok) return;
+            }
+            catch (Exception ex)
+            {
+                Log.LogWarning(ex, "Review confirmation failed for {Url}", Url);
+                return;
+            }
         }
 
         _posting = true;
@@ -570,7 +576,6 @@ else
         finally
         {
             _posting = false;
-            StateHasChanged();
         }
     }
 

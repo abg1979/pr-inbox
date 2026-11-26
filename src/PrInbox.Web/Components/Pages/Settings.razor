@@ -749,7 +749,9 @@ else
         _ghComDiscovering = true;
         _ghComUnbound = Array.Empty<GitHubAuthIdentity>();
         _ghComAlreadyBound = Array.Empty<GitHubAuthIdentity>();
+#pragma warning disable BL0012 // Render before identity discovery starts.
         StateHasChanged();
+#pragma warning restore BL0012
 
         try
         {

@@ -30,7 +30,7 @@ answerable from there.
 
 ## Build, run, test
 
-Prereqs: **.NET 10 SDK**, **git**, and (for Review handoff)
+Prereqs: **.NET 11 SDK**, **git**, and (for Review handoff)
 `gh` CLI + Copilot CLI. The full list with version pins is in
 [README.md → Install](README.md#install).
 
@@ -39,6 +39,11 @@ dotnet restore PrInbox.slnx
 dotnet build   PrInbox.slnx
 dotnet test    PrInbox.slnx
 ```
+
+On macOS/Linux, run `cd -P .` before these commands if the checkout is
+accessed through an aliased path. Mixing logical and physical paths can
+make MSBuild build the same project twice, causing output-file conflicts.
+The Windows tray project can be cross-compiled but only runs on Windows.
 
 To run the Web UI locally:
 

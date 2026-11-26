@@ -359,7 +359,7 @@ internal sealed class WebHostProcess : IDisposable
         }
 
         // 3. Dev layout: derive the sibling Web bin folder for the same config.
-        //    baseDir = ...\src\PrInbox.Tray\bin\<Config>\net10.0-windows\
+        //    baseDir = ...\src\PrInbox.Tray\bin\<Config>\net11.0-windows\
         try
         {
             var tfmDir = new DirectoryInfo(baseDir.TrimEnd(Path.DirectorySeparatorChar));
@@ -370,7 +370,7 @@ internal sealed class WebHostProcess : IDisposable
                 // Returned whether or not it's runnable, so a missing build
                 // yields a precise "expected here" message from Start().
                 return Path.Combine(
-                    srcDir.FullName, "PrInbox.Web", "bin", configDir.Name, "net10.0", exeName);
+                    srcDir.FullName, "PrInbox.Web", "bin", configDir.Name, "net11.0", exeName);
             }
         }
         catch
