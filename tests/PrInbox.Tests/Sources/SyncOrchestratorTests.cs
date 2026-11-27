@@ -89,6 +89,7 @@ public class SyncOrchestratorTests : IAsyncLifetime
         var snap = await _snaps.GetLatestAsync(idAlpha, CancellationToken.None);
         snap.Should().NotBeNull();
         snap!.HeadSha.Should().Be("abc1234567890aaa");
+        snap.OwnApproval.Should().Be(new OwnApproval("jmprieur_microsoft", snap.HeadSha));
 
         // Threads recorded.
         var threads = await _threads.GetOpenThreadsAsync(idAlpha, CancellationToken.None);
@@ -544,5 +545,6 @@ public class SyncOrchestratorTests : IAsyncLifetime
             OrderedCommitShas: new[] { headSha },
             ReviewerState: ReviewerState.Requested,
             Status: PullRequestStatus.Open,
-            RawMetadataJson: "{}");
+            RawMetadataJson: "{}",
+            OwnApproval: new("jmprieur_microsoft", headSha));
 }

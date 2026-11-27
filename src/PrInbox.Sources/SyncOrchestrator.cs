@@ -510,7 +510,8 @@ public sealed class SyncOrchestrator
             files: files,
             reviewDecision: bundle.Detail.ReviewDecision,
             labels: bundle.Detail.Labels,
-            approvalCount: bundle.Detail.ApprovalCount);
+            approvalCount: bundle.Detail.ApprovalCount,
+            ownApproval: bundle.Detail.OwnApproval);
 
         if (!inserted)
         {

@@ -492,6 +492,7 @@ else
                         {
                             <span class="muted">@(row.EnrichState == EnrichState.Enriched ? "–" : "…")</span>
                         }
+                        <ReviewIndicators Row="row" />
                     </td>
                     <td class="age muted" title="@AgeTooltip(row.UpstreamCreatedAt)">@AgeLabel(row.UpstreamCreatedAt)</td>
                     <td class="muted">
@@ -1807,6 +1808,10 @@ else
         try
         {
             _lastLaunchMessage = await Launcher.LaunchAsync(row.Url, CancellationToken.None);
+            var stored = await PrRepo.GetAsync(row.Url, CancellationToken.None);
+            var current = State.CurrentRows.FirstOrDefault(r => r.Url == row.Url);
+            if (stored is not null && current is not null)
+                State.Upsert(current with { ViewedHeadSha = stored.LastBriefedHeadSha ?? stored.LastReviewRunHeadSha });
         }
         catch (Exception ex)
         {

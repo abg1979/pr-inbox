@@ -55,7 +55,8 @@ public sealed record PrSnapshotRow(
     IReadOnlyList<SnapshotFileChange>? Files = null,
     string? ReviewDecision = null,
     IReadOnlyList<string>? Labels = null,
-    int? ApprovalCount = null);
+    int? ApprovalCount = null,
+    OwnApproval? OwnApproval = null);
 
 /// <summary>
 /// One changed file persisted in a snapshot's <c>files_json</c> column.

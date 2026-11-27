@@ -65,7 +65,9 @@ public sealed record InboxRow(
     bool IsDraft = false,
     bool HasSnapshot = false,
     IReadOnlyList<string>? UpstreamLabels = null,
-    int? ApprovalCount = null)
+    int? ApprovalCount = null,
+    string? ViewedHeadSha = null,
+    OwnApproval? OwnApproval = null)
 {
     /// <summary>
     /// True when the user has flagged this PR as "of interest." Flag is
@@ -131,7 +133,8 @@ public sealed record InboxRow(
         string? reviewDecision = null,
         bool hasSnapshot = false,
         IReadOnlyList<string>? upstreamLabels = null,
-        int? approvalCount = null)
+        int? approvalCount = null,
+        OwnApproval? ownApproval = null)
     {
         drift ??= DriftInfo.Unknown;
         var (touchedPaths, touchedState) = ClassifyTouchedPaths(row.EnrichState, snapshotFiles);
@@ -171,7 +174,9 @@ public sealed record InboxRow(
             row.IsDraft,
             hasSnapshot,
             upstreamLabels,
-            approvalCount);
+            approvalCount,
+            row.LastBriefedHeadSha ?? row.LastReviewRunHeadSha,
+            ownApproval);
     }
 
     /// <summary>

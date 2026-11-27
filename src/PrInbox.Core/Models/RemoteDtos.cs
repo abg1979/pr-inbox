@@ -38,7 +38,8 @@ public sealed record RemotePullRequestDetail(
     string? ReviewDecision = null,
     bool IsDraft = false,
     IReadOnlyList<string>? Labels = null,
-    int? ApprovalCount = null);
+    int? ApprovalCount = null,
+    OwnApproval? OwnApproval = null);
 
 /// <summary>
 /// One file changed in a PR. Populated when the source adapter supports a

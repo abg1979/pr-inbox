@@ -1,0 +1,22 @@
+@if (!string.IsNullOrEmpty(Row.ViewedHeadSha))
+{
+    var currentKnown = !string.IsNullOrEmpty(Row.CurrentHeadSha);
+    var latest = currentKnown && Row.ViewedHeadSha == Row.CurrentHeadSha;
+    <span class="badge @(latest ? "enrich-enriched" : "status-other")"
+          title="@($"A Review was prepared from this app at commit {Row.ViewedHeadSha}. This does not imply approval or a completed review.")">
+        @(latest ? "Viewed latest commit" : currentKnown ? "Viewed older commit" : "Viewed")
+    </span>
+}
+@if (Row.OwnApproval is { } approval)
+{
+    var verified = !string.IsNullOrEmpty(approval.HeadSha) && !string.IsNullOrEmpty(Row.CurrentHeadSha);
+    var latest = verified && approval.HeadSha == Row.CurrentHeadSha;
+    <span class="badge @(latest ? "status-merged" : "status-other")"
+          title="@($"Active approval by {approval.Login}, observed at the last sync. Approved commit: {approval.HeadSha ?? "unavailable from this platform"}.")">
+        @(latest ? "You approved latest commit" : verified ? "You approved an older commit" : "You approved (commit unverified)")
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired] public InboxRow Row { get; set; } = default!;
+}

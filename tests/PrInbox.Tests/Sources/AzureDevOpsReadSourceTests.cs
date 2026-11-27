@@ -260,6 +260,7 @@ public class AzureDevOpsReadSourceTests
         bundle.Detail.OrderedCommitShas.Should().Equal("deadbeef");
         bundle.Detail.Labels.Should().BeEquivalentTo("bug", "backend");
         bundle.Detail.ApprovalCount.Should().Be(1);
+        bundle.Detail.OwnApproval.Should().Be(new OwnApproval("self-id", null));
 
         // Only the human-authored thread should survive — the all-system one is filtered.
         bundle.Threads.Should().HaveCount(1);
@@ -308,6 +309,9 @@ public class AzureDevOpsReadSourceTests
                 new PrIdentity("https://dev.azure.com/fabrikam/Context/_git/R/pullrequest/42", "stable"),
                 CancellationToken.None);
             bundle.Detail.ReviewerState.Should().Be(expected, $"vote was {voteJson}");
+            bundle.Detail.OwnApproval.Should().Be(
+                expected is ReviewerState.Approved or ReviewerState.ApprovedWithSuggestions
+                    ? new OwnApproval("self-id", null) : null);
         }
     }
 

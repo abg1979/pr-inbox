@@ -44,7 +44,8 @@ public sealed class PrSnapshotRepository
         IReadOnlyList<SnapshotFileChange>? files = null,
         string? reviewDecision = null,
         IReadOnlyList<string>? labels = null,
-        int? approvalCount = null)
+        int? approvalCount = null,
+        OwnApproval? ownApproval = null)
     {
         await using var conn = await _db.OpenAsync(ct);
 
@@ -55,6 +56,7 @@ public sealed class PrSnapshotRepository
             latest.MergeBaseSha == mergeBaseSha &&
             latest.PrState == prState &&
             latest.ReviewerState == reviewerState &&
+            latest.OwnApproval == ownApproval &&
             CommitShasEqual(latest.OrderedCommitShas, orderedCommitShas))
         {
             return false;
@@ -66,11 +68,11 @@ public sealed class PrSnapshotRepository
               pr_identity, synced_at, head_sha, base_sha, merge_base_sha,
               ordered_commit_shas, reviewer_state, pr_state, raw_metadata_json,
               mergeable_state, ci_status, files_json, review_decision,
-              labels_json, approval_count
+              labels_json, approval_count, own_approval_json
             ) VALUES (
               $prId, $syncedAt, $headSha, $baseSha, $mergeBaseSha,
               $commitShas, $reviewerState, $prState, $rawJson,
-              $mergeable, $ci, $files, $reviewDecision, $labels, $approvalCount
+              $mergeable, $ci, $files, $reviewDecision, $labels, $approvalCount, $ownApproval
             );
             """;
         cmd.Parameters.AddWithValue("$prId", identity.Url);
@@ -92,6 +94,8 @@ public sealed class PrSnapshotRepository
         cmd.Parameters.AddWithValue("$labels",
             labels is null ? DBNull.Value : (object)JsonSerializer.Serialize(labels));
         cmd.Parameters.AddWithValue("$approvalCount", (object?)approvalCount ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ownApproval",
+            ownApproval is null ? DBNull.Value : (object)JsonSerializer.Serialize(ownApproval));
 
         await cmd.ExecuteNonQueryAsync(ct);
         return true;
@@ -209,7 +213,16 @@ public sealed class PrSnapshotRepository
             Files: ReadOptionalFiles(reader, "files_json"),
             ReviewDecision: ReadOptionalString(reader, "review_decision"),
             Labels: ReadOptionalStringList(reader, "labels_json"),
-            ApprovalCount: ReadOptionalInt32(reader, "approval_count"));
+            ApprovalCount: ReadOptionalInt32(reader, "approval_count"),
+            OwnApproval: ReadOwnApproval(reader));
+    }
+
+    private static OwnApproval? ReadOwnApproval(SqliteDataReader reader)
+    {
+        var json = ReadOptionalString(reader, "own_approval_json");
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<OwnApproval>(json); }
+        catch (JsonException) { return null; }
     }
 
     private static bool HasColumn(SqliteDataReader reader, string name)

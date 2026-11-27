@@ -54,6 +54,35 @@ public class RepositoryRoundTripTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Own_Approval_Changes_And_Revocation_Are_Persisted_Without_A_Push()
+    {
+        var row = SampleRow();
+        await new PullRequestRepository(_db).UpsertAsync(row, CancellationToken.None);
+        var snapshots = new PrSnapshotRepository(_db);
+        OwnApproval?[] observations =
+        [
+            null,
+            new("alice", "head"),
+            new("alice", "older-head"),
+            null,
+        ];
+        var when = row.LastSyncedAt;
+        foreach (var approval in observations)
+        {
+            var inserted = await snapshots.InsertIfChangedAsync(
+                row.Identity, when, "head", "base", null, ["head"], ReviewerState.Commented,
+                PullRequestStatus.Open, null, CancellationToken.None, ownApproval: approval);
+            inserted.Should().BeTrue();
+            var saved = await snapshots.GetLatestAsync(row.Identity, CancellationToken.None);
+            saved!.OwnApproval.Should().Be(approval);
+            (await snapshots.InsertIfChangedAsync(
+                row.Identity, when.AddSeconds(1), "head", "base", null, ["head"], ReviewerState.Commented,
+                PullRequestStatus.Open, null, CancellationToken.None, ownApproval: approval)).Should().BeFalse();
+            when = when.AddMinutes(1);
+        }
+    }
+
+    [Fact]
     public async Task PullRequest_Upsert_Then_Get_Returns_Same_Row()
     {
         var repo = new PullRequestRepository(_db);

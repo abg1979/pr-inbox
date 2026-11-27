@@ -270,7 +270,11 @@ public sealed class AzureDevOpsReadSource : IPrReadSource
             CiStatus: null,
             IsDraft: pr.IsDraft,
             Labels: labels,
-            ApprovalCount: pr.Reviewers.Count(reviewer => reviewer.Vote > 0));
+            ApprovalCount: pr.Reviewers.Count(reviewer => reviewer.Vote > 0),
+            OwnApproval: reviewerState is ReviewerState.Approved or ReviewerState.ApprovedWithSuggestions
+                && !string.IsNullOrEmpty(_cachedReviewerId)
+                ? new OwnApproval(_cachedReviewerId, null)
+                : null);
     }
 
     private async Task<IReadOnlyList<string>?> FetchLabelsAsync(string repoId, int prId, CancellationToken ct)

@@ -165,6 +165,53 @@ public class GitHubReviewDecisionTests
             Array.Empty<(string?, string?, DateTimeOffset)>()).Should().BeNull();
     }
 
+    public class GitHubOwnApprovalTests
+    {
+        private static readonly DateTimeOffset T0 = DateTimeOffset.Parse("2026-06-01T10:00:00Z");
+
+        [Fact]
+        public void Approval_Is_For_Authenticated_Identity_And_Ignores_Later_Comments()
+        {
+            var reviews = new (string?, string?, DateTimeOffset, string?)[]
+            {
+                ("Alice", "APPROVED", T0, "old-head"),
+                ("alice", "COMMENTED", T0.AddHours(1), "new-head"),
+                ("bob", "APPROVED", T0.AddHours(2), "new-head"),
+                ("alice", "PENDING", T0.AddHours(3), "new-head"),
+            };
+
+            GitHubReadSource.ComputeOwnApprovalCore(reviews, "alice")
+                .Should().Be(new OwnApproval("alice", "old-head"));
+            GitHubReadSource.ComputeOwnApprovalCore(reviews, "someone-else").Should().BeNull();
+            GitHubReadSource.ComputeOwnApprovalCore(reviews, null).Should().BeNull();
+        }
+
+        [Theory]
+        [InlineData("DISMISSED")]
+        [InlineData("CHANGES_REQUESTED")]
+        public void Later_Decisive_Review_Clears_Approval(string state)
+        {
+            var reviews = new (string?, string?, DateTimeOffset, string?)[]
+            {
+                ("alice", state, T0.AddHours(1), "new-head"),
+                ("alice", "APPROVED", T0, "old-head"),
+            };
+            GitHubReadSource.ComputeOwnApprovalCore(reviews, "alice").Should().BeNull();
+        }
+
+        [Fact]
+        public void Reapproval_Uses_New_Commit()
+        {
+            var reviews = new (string?, string?, DateTimeOffset, string?)[]
+            {
+                ("alice", "APPROVED", T0, "old-head"),
+                ("alice", "APPROVED", T0.AddHours(1), "new-head"),
+            };
+            GitHubReadSource.ComputeOwnApprovalCore(reviews, "alice")
+                .Should().Be(new OwnApproval("alice", "new-head"));
+        }
+    }
+
     [Fact]
     public void Only_Comments_Is_Null()
     {

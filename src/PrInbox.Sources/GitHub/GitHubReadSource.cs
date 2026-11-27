@@ -221,6 +221,7 @@ public sealed class GitHubReadSource : IPrReadSource
         ReviewerState? reviewerState = null;
         string? reviewDecision = null;
         int? approvalCount = null;
+        OwnApproval? ownApproval = null;
         try
         {
             var reviews = await client.PullRequest.Review.GetAll(owner, repo, number);
@@ -229,6 +230,16 @@ public sealed class GitHubReadSource : IPrReadSource
                 (r.User?.Login, (string?)r.State.StringValue, r.SubmittedAt)));
             reviewDecision = reviewSummary.Decision;
             approvalCount = reviewSummary.ApprovalCount;
+            try
+            {
+                var self = await client.User.Current();
+                ownApproval = ComputeOwnApprovalCore(reviews.Select(r =>
+                    (r.User?.Login, (string?)r.State.StringValue, r.SubmittedAt, (string?)r.CommitId)), self.Login);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Authenticated user lookup failed for {Url}; personal approval is unknown.", id.Url);
+            }
         }
         catch
         {
@@ -316,7 +327,8 @@ public sealed class GitHubReadSource : IPrReadSource
             ReviewDecision: reviewDecision,
             IsDraft: pr.Draft,
             Labels: pr.Labels?.Select(label => label.Name).Where(name => !string.IsNullOrWhiteSpace(name)).ToArray(),
-            ApprovalCount: approvalCount);
+            ApprovalCount: approvalCount,
+            OwnApproval: ownApproval);
     }
 
     private static readonly HttpClient s_graphqlHttp = new()
@@ -746,6 +758,21 @@ public sealed class GitHubReadSource : IPrReadSource
             ? "changes_requested"
             : states.Contains("APPROVED") ? "approved" : null;
         return (decision, states.Count(state => state == "APPROVED"));
+    }
+
+    internal static OwnApproval? ComputeOwnApprovalCore(
+        IEnumerable<(string? Login, string? State, DateTimeOffset When, string? CommitSha)> reviews,
+        string? ownLogin)
+    {
+        if (string.IsNullOrWhiteSpace(ownLogin)) return null;
+        var latest = reviews
+            .Where(r => string.Equals(r.Login, ownLogin, StringComparison.OrdinalIgnoreCase)
+                && r.State?.ToUpperInvariant() is "APPROVED" or "CHANGES_REQUESTED" or "DISMISSED")
+            .OrderBy(r => r.When)
+            .LastOrDefault();
+        return string.Equals(latest.State, "APPROVED", StringComparison.OrdinalIgnoreCase)
+            ? new OwnApproval(ownLogin, latest.CommitSha)
+            : null;
     }
 
     private (bool IsBot, BotKind? BotKind) ClassifyAuthor(User? user)

@@ -184,7 +184,7 @@ public sealed class InboxSyncHostedService : BackgroundService
             tagsByUrl.TryGetValue(pr.Url, out var tags);
             rows.Add(InboxRow.FromRow(pr, open, bot, drift, likelyDone, tags, snap?.Files,
                 snap?.CiStatus, snap?.MergeableState, snap?.ReviewDecision, hasSnapshot: snap is not null,
-                upstreamLabels: snap?.Labels, approvalCount: snap?.ApprovalCount));
+                upstreamLabels: snap?.Labels, approvalCount: snap?.ApprovalCount, ownApproval: snap?.OwnApproval));
         }
         _state.ReplaceAll(rows);
         _log.LogDebug("Cache refresh completed (rows={RowCount}).", rows.Count);
@@ -599,7 +599,7 @@ public sealed class InboxSyncHostedService : BackgroundService
                     _state.Upsert(InboxRow.FromRow(fresh, open, bot, drift, likelyDone, tags, snap?.Files,
                         snap?.CiStatus, snap?.MergeableState, snap?.ReviewDecision,
                         hasSnapshot: snap is not null, upstreamLabels: snap?.Labels,
-                        approvalCount: snap?.ApprovalCount));
+                        approvalCount: snap?.ApprovalCount, ownApproval: snap?.OwnApproval));
                 }
             }
             catch (Exception ex)
