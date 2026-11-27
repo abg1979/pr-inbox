@@ -24,6 +24,20 @@ public sealed class ConfigServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExistingThreadHandling_DefaultsToDraft_AndPersistsWithoutRestart()
+    {
+        var singleton = new PrInboxConfig();
+        var service = new ConfigService(singleton, _path);
+        (await service.GetAsync()).ReviewLauncher.ExistingThreadHandling.Should().Be(ExistingThreadHandling.DraftForApproval);
+        foreach (var mode in new[] { ExistingThreadHandling.Automatic, ExistingThreadHandling.Off, ExistingThreadHandling.DraftForApproval })
+        {
+            await service.SetExistingThreadHandlingAsync(mode);
+            singleton.ReviewLauncher.ExistingThreadHandling.Should().Be(mode);
+            (await service.GetAsync()).ReviewLauncher.ExistingThreadHandling.Should().Be(mode);
+        }
+    }
+
+    [Fact]
     public void ConfigFileExists_Is_False_When_File_Missing()
     {
         var svc = new ConfigService(_path);

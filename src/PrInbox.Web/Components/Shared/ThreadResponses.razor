@@ -1,0 +1,168 @@
+@using PrInbox.Core.Reviewing
+@inject ThreadResponseQueueService QueueService
+@implements IAsyncDisposable
+
+<section aria-label="Thread responses">
+    <p class="muted">Draft actions stay local until you select threads and click <strong>Post selected actions</strong>. Saved edits survive restarts. Posting rechecks GitHub HEAD and thread ownership.</p>
+    @if (_error is not null)
+    {
+        <p class="action-error" role="alert">@_error</p>
+    }
+    @if (_result is not null)
+    {
+        <div role="status">
+            @foreach (var message in _result.Messages) { <p>@message</p> }
+            @foreach (var error in _result.Errors) { <p class="action-error">@error</p> }
+        </div>
+    }
+    @if (_queue is null)
+    {
+        <p class="empty">Waiting for <code>thread-responses.json</code>. Runs launched with handling Off or Automatic do not create an approval queue. Older runs need a new review.</p>
+    }
+    else if (_queue.Items.Count == 0)
+    {
+        <p class="empty">No existing threads need a response.</p>
+    }
+    else
+    {
+        @foreach (var item in _queue.Items)
+        {
+            var id = item.Draft.ThreadId;
+            <article class="thread-response" @key="id">
+                <h3>
+                    <label>
+                        <input type="checkbox" checked="@_selected.Contains(id)"
+                               disabled="@(_busy || !item.HasPendingActions)"
+                               @onchange="@(e => Select(id, (bool)e.Value!))" />
+                        Thread @item.Draft.CommentId
+                    </label>
+                    <a href="@($"{Run.PrUrl}#discussion_r{item.Draft.CommentId}")" target="_blank" rel="noopener">View conversation on GitHub</a>
+                </h3>
+                <details>
+                    <summary>Original conversation (cached comments)</summary>
+                    @foreach (var comment in item.Conversation)
+                    {
+                        <p><strong>@comment.AuthorLogin</strong> <code>@comment.AnchorPath:@comment.AnchorLine</code></p>
+                        <pre class="comment-preview">@comment.LastCommentBody</pre>
+                    }
+                    @if (item.Conversation.Count == 0)
+                    {
+                        <p class="muted">No cached comments. Open the conversation on GitHub for the complete thread.</p>
+                    }
+                </details>
+                <p><strong>@item.Draft.Assessment</strong> · @item.Draft.SettleState · stance: @item.Draft.OurStance · @(item.Draft.Verified ? "verified" : "not verified")</p>
+                <pre class="comment-preview">@item.Draft.Evidence</pre>
+                <label>
+                    Reply (editable; blur to save)
+                    <textarea class="comment-draft" rows="6" value="@item.Edit.Reply"
+                              disabled="@(_busy || item.Receipt.Replied)"
+                              @onchange="@(e => EditAsync(item, item.Edit with { Reply = e.Value?.ToString() ?? "" }))"></textarea>
+                </label>
+                <div class="post-row">
+                    <label><input type="checkbox" checked="@item.Edit.SendReply" disabled="@(_busy || item.Receipt.Replied)"
+                                  @onchange="@(e => EditAsync(item, item.Edit with { SendReply = (bool)e.Value! }))" /> Reply @(item.Receipt.Replied ? "(posted)" : "")</label>
+                    <label><input type="checkbox" checked="@item.Edit.React" disabled="@(_busy || item.Receipt.Reacted || item.Draft.Assessment != "correct")"
+                                  @onchange="@(e => EditAsync(item, item.Edit with { React = (bool)e.Value! }))" /> Thumbs-up @(item.Receipt.Reacted ? "(posted)" : "")</label>
+                    <label><input type="checkbox" checked="@item.Edit.Resolve" disabled="@(_busy || item.Receipt.Resolved || !item.Draft.CanResolve)"
+                                  @onchange="@(e => EditAsync(item, item.Edit with { Resolve = (bool)e.Value! }))" /> Resolve @(item.Receipt.Resolved ? "(posted)" : "")</label>
+                </div>
+            </article>
+        }
+        <p class="accountability-note">These replies, reactions, and resolutions are posted under your configured PR identity. Review the conversation and evidence before approving.</p>
+        <button class="review" disabled="@(_busy || _error is not null || _selected.Count == 0)" @onclick="PostAsync">
+            @(_busy ? "Working..." : $"Post selected actions ({_selected.Count})")
+        </button>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ReviewRun Run { get; set; } = null!;
+    private ThreadResponseQueue? _queue;
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private readonly CancellationTokenSource _stop = new();
+    private Task? _poll;
+    private string? _runDirectory;
+    private bool _busy;
+    private string? _error;
+    private ThreadResponseQueueResult? _result;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_runDirectory != Run.RunDirectory)
+        {
+            _runDirectory = Run.RunDirectory;
+            _queue = null;
+            _result = null;
+            _selected.Clear();
+            await ReloadAsync();
+        }
+        _poll ??= PollAsync();
+    }
+
+    private async Task PollAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_stop.Token))
+                await InvokeAsync(async () => { if (!_busy) { await ReloadAsync(); StateHasChanged(); } });
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            var queue = await QueueService.LoadAsync(Run, _stop.Token);
+            if (_queue?.Revision != queue?.Revision) _selected.Clear();
+            _queue = queue;
+            _error = null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _error = $"Cannot load thread responses: {ex.Message}";
+            _selected.Clear();
+        }
+    }
+
+    private void Select(string id, bool selected)
+    {
+        if (selected) _selected.Add(id); else _selected.Remove(id);
+    }
+
+    private async Task EditAsync(ThreadResponseItem item, ThreadResponseEdit edit)
+    {
+        if (_busy || _queue is null) return;
+        _busy = true;
+        _selected.Clear();
+        try
+        {
+            await QueueService.SaveEditAsync(Run, _queue.Revision, item.Draft.ThreadId, edit, _stop.Token);
+            await ReloadAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task PostAsync()
+    {
+        if (_busy || _queue is null || _selected.Count == 0 || _error is not null) return;
+        _busy = true;
+        try
+        {
+            _result = await QueueService.PublishAsync(Run.PrUrl, Run.RunId, _queue.Revision, _selected.ToList());
+            _selected.Clear();
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _stop.CancelAsync();
+        if (_poll is not null) await _poll;
+        _stop.Dispose();
+    }
+}

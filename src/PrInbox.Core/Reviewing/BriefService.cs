@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using PrInbox.Core.Models;
 using PrInbox.Core.Storage;
+using PrInbox.Core.Credentials;
 
 namespace PrInbox.Core.Reviewing;
 
@@ -79,7 +80,8 @@ public sealed class BriefService
     }
 
     public async Task<BriefResult> CreateBriefAsync(string prUrl, CancellationToken ct,
-        bool postAsPending = false)
+        bool postAsPending = false,
+        ExistingThreadHandling threadHandling = ExistingThreadHandling.DraftForApproval)
     {
         if (!PrUrl.TryCanonicalize(prUrl, out var canonical))
         {
@@ -115,7 +117,7 @@ public sealed class BriefService
         var briefPath = Path.Combine(runDir, "brief.md");
         var metadataPath = Path.Combine(runDir, "metadata.json");
 
-        var brief = BuildBriefMarkdown(row, snapshot, openThreads, recentBotThreads, priorRuns, runDir);
+        var brief = BuildBriefMarkdown(row, snapshot, openThreads, recentBotThreads, priorRuns, runDir, threadHandling);
         await File.WriteAllTextAsync(briefPath, brief, ct);
 
         // Copy the findings schema and posting-style sidecar next to the
@@ -163,6 +165,7 @@ public sealed class BriefService
             open_thread_count = openThreads.Count,
             recent_bot_thread_count = recentBotThreads.Count,
             prior_run_count = priorRuns.Count,
+            existing_thread_handling = threadHandling.ToString(),
         };
         var metadataJson = JsonSerializer.Serialize(metadata,
             new JsonSerializerOptions { WriteIndented = true });
@@ -222,7 +225,8 @@ public sealed class BriefService
         IReadOnlyList<ObservedThreadRow> openThreads,
         IReadOnlyList<ObservedThreadRow> recentBotThreads,
         IReadOnlyList<ReviewRunRow> priorRuns,
-        string runDir)
+        string runDir,
+        ExistingThreadHandling threadHandling = ExistingThreadHandling.DraftForApproval)
     {
         var sb = new StringBuilder();
 
@@ -420,9 +424,45 @@ public sealed class BriefService
         sb.AppendLine();
         sb.AppendLine("### Then: triage the existing review threads");
         sb.AppendLine();
+        if (threadHandling == ExistingThreadHandling.Off)
+        {
+            sb.AppendLine("Existing-thread handling is **Off**. Do not reply, react, resolve, or otherwise mutate existing threads. Do not generate thread-response drafts.");
+            return sb.ToString();
+        }
+
         sb.AppendLine("After `findings.yaml` is written, adjudicate the unresolved threads under **Open threads** above — all reviewers, including bots like Copilot. Do your own findings first; don't let these comments shape them.");
         sb.AppendLine();
-        sb.AppendLine("Verify each thread against the current HEAD (read the post-change file, run the relevant check — don't trust a \"fixed\" claim), then act **live**. Unlike findings, these actions are verification-gated, so post them directly:");
+        if (threadHandling != ExistingThreadHandling.Automatic)
+        {
+            sb.AppendLine("Existing-thread handling is **Draft for approval**. Do not post replies, add reactions, or resolve threads. This overrides any skill's execute/live instructions. Verify each thread against HEAD, then write `thread-responses.json` in this run directory for the human to edit and approve in pr-inbox.");
+            sb.AppendLine();
+            sb.AppendLine("Use this JSON contract (camelCase, schemaVersion 1). Copy prUrl and headSha exactly; one response per unresolved GitHub review thread, using its root REST comment ID and GraphQL thread ID. Fetch missing IDs/conversation read-only from GitHub; never invent them. Skip non-review conversations and unsupported platforms. Write an empty responses array if there is nothing to triage. Write the file atomically when complete; never edit thread-response-state.json (human edits and publication receipts).");
+            sb.AppendLine("```json");
+            sb.AppendLine(JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                prUrl = pr.Identity.Url,
+                headSha = snapshot.HeadSha,
+                responses = new[] { new
+                {
+                    threadId = "PRRT_...",
+                    commentId = 123L,
+                    assessment = "correct",
+                    settleState = "open",
+                    ourStance = "n/a",
+                    verified = true,
+                    evidence = "path:line at HEAD and relevant check result",
+                    reply = "Collaborative reply with concrete evidence.",
+                    react = true,
+                    resolve = false,
+                } },
+            }, new JsonSerializerOptions { WriteIndented = true }));
+            sb.AppendLine("```");
+            sb.AppendLine("assessment: correct / incorrect / uncertain. settleState: open / fixed / rejected_by_author. ourStance: agree / disagree / n/a (agreement with the author's rejection). Propose resolve only with verified evidence and a fixed, incorrectly flagged, or author-rejected-with-evidence state that you agree with; never for uncertain or contested threads. react means thumbs-up for a correct comment. Draft proposals only: the app posts selected actions after explicit approval.");
+            return sb.ToString();
+        }
+
+        sb.AppendLine("Existing-thread handling is **Automatic**. Verify each thread against the current HEAD (read the post-change file, run the relevant check — don't trust a \"fixed\" claim), then act **live**. Unlike findings, these actions are verification-gated, so post them directly:");
         sb.AppendLine();
         sb.AppendLine("- **Reply** to each thread with your judgment, collaboratively, with concrete evidence.");
         sb.AppendLine("- **Thumbs-up (+1 reaction)** the comments that are correct.");

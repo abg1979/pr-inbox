@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Microsoft.Extensions.Logging;
 using PrInbox.Core.Reviewing;
+using PrInbox.Core.Credentials;
 using PrInbox.Core.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -37,7 +38,9 @@ internal sealed class ReviewCommand : AsyncCommand<ReviewSettings>
         BriefResult result;
         try
         {
-            result = await briefService.CreateBriefAsync(settings.PrId, CancellationToken.None);
+            var config = await PrInboxConfig.LoadAsync(ct: cancellationToken);
+            result = await briefService.CreateBriefAsync(settings.PrId, cancellationToken,
+                threadHandling: config.ReviewLauncher.ExistingThreadHandling);
         }
         catch (BriefCreationException ex)
         {

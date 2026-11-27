@@ -23,6 +23,7 @@ builder.Services.AddRazorComponents()
 // way the CLI does; no shared state file beyond %APPDATA%\PrInbox.
 builder.Services.AddSingleton<InboxState>();
 builder.Services.AddSingleton<ReviewRunStore>();
+builder.Services.AddSingleton<ThreadResponseQueueService>();
 builder.Services.AddSingleton<ConsoleWindowRegistry>();
 builder.Services.AddSingleton<IReviewLauncher, ReviewLauncher>();
 builder.Services.AddSingleton<InboxSyncHostedService>();

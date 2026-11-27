@@ -246,4 +246,8 @@ public interface IPrReviewPublisher
     /// failure.
     /// </summary>
     Task<ThreadResolveResult> ResolveThreadsAsync(ThreadResolveRequest request, CancellationToken ct);
+
+    Task<ThreadResponseResult> PostThreadResponseAsync(ThreadResponseRequest request, CancellationToken ct)
+        => Task.FromResult(new ThreadResponseResult(false, false, false, Kind,
+            "Thread-response approval is currently supported only for GitHub review threads."));
 }

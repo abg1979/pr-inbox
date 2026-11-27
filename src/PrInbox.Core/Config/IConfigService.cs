@@ -152,6 +152,8 @@ public interface IConfigService
     /// </summary>
     Task SetReviewLauncherPostAsPendingAsync(bool postAsPending, CancellationToken ct = default);
 
+    Task SetExistingThreadHandlingAsync(ExistingThreadHandling handling, CancellationToken ct = default);
+
     /// <summary>
     /// Replaces the entire <see cref="PrInboxConfig.RepoPathFilters"/> map
     /// (monorepo path scoping) and mirrors it onto the DI singleton so the

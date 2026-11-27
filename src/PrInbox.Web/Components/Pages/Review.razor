@@ -18,7 +18,7 @@
 @inject NavigationManager Nav
 @implements IDisposable
 
-<h1>Review findings</h1>
+<h1>Review</h1>
 
 @if (string.IsNullOrWhiteSpace(Url))
 {
@@ -103,6 +103,20 @@
         }
     }
 
+@if (_run is not null)
+{
+    <div class="toolbar" role="tablist" aria-label="Review content">
+        <button role="tab" aria-selected="@(!_showThreadResponses)" @onclick="@(() => _showThreadResponses = false)">Findings</button>
+        <button role="tab" aria-selected="@_showThreadResponses" @onclick="@(() => _showThreadResponses = true)">Thread responses</button>
+    </div>
+}
+
+@if (_showThreadResponses && _run is not null)
+{
+    <ThreadResponses Run="_run" @key="_run.RunDirectory" />
+}
+else
+{
 @if (_run is null)
 {
     <p class="empty">No active review run for this PR. Launch one from the inbox first.</p>
@@ -288,6 +302,8 @@ else
     </div>
 }
 
+}
+
 @code {
     [SupplyParameterFromQuery(Name = "url")]
     public string? Url { get; set; }
@@ -296,6 +312,7 @@ else
     public string? Show { get; set; }
 
     private ReviewRun? _run;
+    private bool _showThreadResponses;
     private DriftInfo? _drift;
     private HashSet<string> _selected = new();
     private bool _showCritical = true;

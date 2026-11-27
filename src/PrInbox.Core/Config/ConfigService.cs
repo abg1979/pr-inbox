@@ -308,6 +308,14 @@ public sealed class ConfigService : IConfigService
     }
 
     /// <inheritdoc />
+    public async Task SetExistingThreadHandlingAsync(ExistingThreadHandling handling, CancellationToken ct = default)
+    {
+        if (!Enum.IsDefined(handling)) throw new ArgumentOutOfRangeException(nameof(handling));
+        var cfg = await PrInboxConfig.LoadAsync(_configPath, ct);
+        cfg.ReviewLauncher.ExistingThreadHandling = handling;
+        await SaveAndRefreshAsync(cfg, ct);
+    }
+
     public async Task SetReviewLauncherPostAsPendingAsync(bool postAsPending, CancellationToken ct = default)
     {
         var cfg = await PrInboxConfig.LoadAsync(_configPath, ct);
@@ -471,6 +479,7 @@ public sealed class ConfigService : IConfigService
         _singleton.ReviewLauncher.TabColor = cfg.ReviewLauncher.TabColor;
         _singleton.ReviewLauncher.TabPerReview = cfg.ReviewLauncher.TabPerReview;
         _singleton.ReviewLauncher.LaunchCommand = cfg.ReviewLauncher.LaunchCommand;
+        _singleton.ReviewLauncher.ExistingThreadHandling = cfg.ReviewLauncher.ExistingThreadHandling;
         MirrorPlatformOverride(_singleton.ReviewLauncher.Platform.Windows, cfg.ReviewLauncher.Platform.Windows);
         MirrorPlatformOverride(_singleton.ReviewLauncher.Platform.MacOS, cfg.ReviewLauncher.Platform.MacOS);
         MirrorPlatformOverride(_singleton.ReviewLauncher.Platform.Linux, cfg.ReviewLauncher.Platform.Linux);

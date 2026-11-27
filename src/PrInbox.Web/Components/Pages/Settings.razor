@@ -358,6 +358,17 @@ else
         </p>
         <div class="settings-toggle">
             <label>
+                <strong>Existing-thread handling</strong>
+                <span class="muted">Draft for approval keeps replies, reactions, and resolutions local until you approve them in Review. Automatic posts directly. Applies to new runs only.</span>
+                <select value="@_threadHandling" @onchange="OnThreadHandlingChanged" disabled="@_busy">
+                    <option value="@ExistingThreadHandling.Off">Off</option>
+                    <option value="@ExistingThreadHandling.DraftForApproval">Draft for approval</option>
+                    <option value="@ExistingThreadHandling.Automatic">Automatic</option>
+                </select>
+            </label>
+        </div>
+        <div class="settings-toggle">
+            <label>
                 <strong>Launch command</strong>
                 <span class="muted">
                     The command that runs the review. Use <code>{plugindir}</code>, <code>{plugin}</code>,
@@ -562,6 +573,7 @@ else
     private bool _yolo;
     private bool _tabPerReview;
     private bool _postAsPending;
+    private ExistingThreadHandling _threadHandling = ExistingThreadHandling.DraftForApproval;
     private string _tabColor = string.Empty;
     private string _launchCommand = string.Empty;
     private string _model = string.Empty;
@@ -684,6 +696,7 @@ else
         _yolo = _cfg.ReviewLauncher.Yolo;
         _tabPerReview = _cfg.ReviewLauncher.TabPerReview;
         _postAsPending = _cfg.ReviewLauncher.PostAsPending;
+        _threadHandling = _cfg.ReviewLauncher.ExistingThreadHandling;
         _tabColor = _cfg.ReviewLauncher.TabColor;
         _launchCommand = _cfg.ReviewLauncher.LaunchCommand;
         _model = _cfg.ReviewLauncher.Model;
@@ -1129,6 +1142,18 @@ else
         {
             await ConfigSvc.SetReviewLauncherTabPerReviewAsync(_tabPerReview);
             SetMessage($"One tab per review {(value ? "ON" : "OFF")}.");
+        });
+    }
+
+    private Task OnThreadHandlingChanged(ChangeEventArgs e)
+    {
+        if (!Enum.TryParse<ExistingThreadHandling>(e.Value?.ToString(), out var handling))
+            return Task.CompletedTask;
+        return WrapAsync(async () =>
+        {
+            await ConfigSvc.SetExistingThreadHandlingAsync(handling);
+            _threadHandling = handling;
+            SetMessage("Existing-thread handling updated for new review runs.");
         });
     }
 

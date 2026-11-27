@@ -173,6 +173,13 @@ public sealed class BotConfig
     public List<string> ExtraLogins { get; init; } = new();
 }
 
+public enum ExistingThreadHandling
+{
+    DraftForApproval,
+    Off,
+    Automatic,
+}
+
 /// <summary>
 /// Defaults the Web UI uses when launching a review session.
 /// The common fields apply on every OS unless overridden by
@@ -180,6 +187,8 @@ public sealed class BotConfig
 /// </summary>
 public sealed class ReviewLauncherSettings
 {
+    public ExistingThreadHandling ExistingThreadHandling { get; set; } = ExistingThreadHandling.DraftForApproval;
+
     /// <summary>
     /// The full command the launcher runs, with <c>{plugindir}</c>,
     /// <c>{plugin}</c>, <c>{model}</c>, and <c>{agent}</c> placeholders.

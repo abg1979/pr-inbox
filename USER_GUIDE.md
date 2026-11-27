@@ -411,6 +411,29 @@ ID for a different issue does not block the new comment.
 
 ## Daily flow 3 — Close the loop
 
+### Approve AI-drafted thread responses
+
+New reviews default to **Draft for approval** for existing threads. The
+agent writes `thread-responses.json` locally instead of replying, reacting,
+or resolving on GitHub. On the Review screen, open **Thread responses** to
+inspect cached comments (with a link to the full conversation), the agent's
+assessment and evidence, and its editable reply. Choose Reply, Thumbs-up,
+and Resolve independently, select the threads, then click **Post selected
+actions**. Nothing is selected initially; editing clears the selection so
+you can review the final actions before approval.
+
+Edits and per-action publication receipts are saved in the run directory.
+Posting checks the live PR HEAD and thread ownership; stale drafts are
+blocked and need a new review. Unverified or contested threads cannot be
+resolved. A partially failed post retains successful actions for retry.
+Thread responses are live when approved, not part of a pending GitHub review.
+
+Under **Settings → Review launcher → Existing-thread handling**, choose
+**Off**, **Draft for approval** (default), or **Automatic** (the agent acts
+directly). Changes affect new runs only; previously generated briefs retain
+their original instructions. This approval queue currently supports GitHub
+and GitHub Enterprise review threads, not Azure DevOps threads.
+
 After someone replies "Done in `abc1234…`" to your review, you want
 the thread off your screen without manually clicking around. Two
 features make this easy.

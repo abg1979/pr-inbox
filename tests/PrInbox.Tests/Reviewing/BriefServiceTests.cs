@@ -1,6 +1,7 @@
 using PrInbox.Core.Models;
 using PrInbox.Core.Reviewing;
 using PrInbox.Core.Storage;
+using PrInbox.Core.Credentials;
 
 namespace PrInbox.Tests.Reviewing;
 
@@ -14,6 +15,35 @@ namespace PrInbox.Tests.Reviewing;
 /// </summary>
 public class BriefServiceTests
 {
+    [Theory]
+    [InlineData(ExistingThreadHandling.DraftForApproval)]
+    [InlineData(ExistingThreadHandling.Automatic)]
+    [InlineData(ExistingThreadHandling.Off)]
+    public void ThreadHandling_OnlyExplicitAutomaticMode_InstructsLiveMutations(ExistingThreadHandling mode)
+    {
+        var md = BriefService.BuildBriefMarkdown(MakePr(), MakeSnapshot(), [], [], [], "/runs/test", mode);
+        Assert.Contains("**Do not post your findings.**", md);
+        if (mode == ExistingThreadHandling.Automatic)
+            Assert.Contains("act **live**", md);
+        else
+            Assert.DoesNotContain("act **live**", md);
+        if (mode == ExistingThreadHandling.DraftForApproval)
+        {
+            Assert.Contains("thread-responses.json", md);
+            Assert.Contains("Do not post replies, add reactions, or resolve threads.", md);
+        }
+        else
+            Assert.DoesNotContain("thread-responses.json", md);
+    }
+
+    [Fact]
+    public void ThreadHandling_IsApprovalGated_WhenOmitted()
+    {
+        var md = BriefService.BuildBriefMarkdown(MakePr(), MakeSnapshot(), [], [], [], "/runs/test");
+        Assert.Contains("**Draft for approval**", md);
+        Assert.DoesNotContain("act **live**", md);
+    }
+
     private static PullRequestRow MakePr(string? body = null, string? title = "Sample PR")
     {
         var id = new PrIdentity(

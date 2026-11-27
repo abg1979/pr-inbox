@@ -27,7 +27,7 @@ namespace PrInbox.Publishers;
 /// </code>
 /// Dry-run returns immediately with a plan; no HTTP call is made.
 /// </remarks>
-public sealed class GitHubReviewPublisher : IPrReviewPublisher
+public sealed partial class GitHubReviewPublisher : IPrReviewPublisher
 {
     private readonly ITokenProvider _tokens;
     private readonly HttpClient _http;
